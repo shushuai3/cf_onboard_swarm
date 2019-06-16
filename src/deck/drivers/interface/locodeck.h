@@ -128,5 +128,6 @@ struct lppShortAnchorPos_s {
   float y;
   float z;
 } __attribute__((packed));
+#define LPS_TWR_ENABLE
 
 #endif // __LOCODECK_H__

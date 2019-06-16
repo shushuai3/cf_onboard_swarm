@@ -25,7 +25,7 @@
 #ifdef LOCODECK_NR_OF_ANCHORS
 #define LOCODECK_NR_OF_TWR_ANCHORS LOCODECK_NR_OF_ANCHORS
 #else
-#define LOCODECK_NR_OF_TWR_ANCHORS 8
+#define LOCODECK_NR_OF_TWR_ANCHORS 1
 #endif
 
 extern uwbAlgorithm_t uwbTwrTagAlgorithm;
@@ -58,8 +58,11 @@ typedef struct {
 } lpsTwrAlgoOptions_t;
 
 
-void uwbTwrTagSetOptions(lpsTwrAlgoOptions_t* newOptions);
-float lpsTwrTagGetDistance(const uint8_t anchorId);
+// void uwbTwrTagSetOptions(lpsTwrAlgoOptions_t* newOptions);
+// float lpsTwrTagGetDistance(const uint8_t anchorId);
+struct lppShortAnchorPosition_s {
+  float position[3];
+} __attribute__((packed));
 
 #define TWR_RECEIVE_TIMEOUT 1000
 

@@ -49,14 +49,14 @@
 
 // Config
 static lpsTwrAlgoOptions_t defaultOptions = {
-   .tagAddress = 0xbccf000000000008,
+   .tagAddress = 0xbccf000000000000,
    .anchorAddress = {
-     0xbccf000000000000,
-     0xbccf000000000001,
-     0xbccf000000000002,
-     0xbccf000000000003,
-     0xbccf000000000004,
-     0xbccf000000000005,
+     0xbccf000000000008,
+    //  0xbccf000000000001,
+    //  0xbccf000000000002,
+    //  0xbccf000000000003,
+    //  0xbccf000000000004,
+    //  0xbccf000000000005,
  #if LOCODECK_NR_OF_TWR_ANCHORS > 6
      0xbccf000000000006,
  #endif
@@ -88,29 +88,29 @@ static lpsTwrAlgoOptions_t defaultOptions = {
  //   .combinedAnchorPositionOk = true,
 };
 
-typedef struct {
-  float distance[LOCODECK_NR_OF_TWR_ANCHORS];
-  float pressures[LOCODECK_NR_OF_TWR_ANCHORS];
-  int failedRanging[LOCODECK_NR_OF_TWR_ANCHORS];
-} twrState_t;
+// typedef struct {
+//   float distance[LOCODECK_NR_OF_TWR_ANCHORS];
+//   float pressures[LOCODECK_NR_OF_TWR_ANCHORS];
+//   int failedRanging[LOCODECK_NR_OF_TWR_ANCHORS];
+// } twrState_t;
 
-static twrState_t state;
+// static twrState_t state;
 static lpsTwrAlgoOptions_t* options = &defaultOptions;
 
 // Outlier rejection
-#define RANGING_HISTORY_LENGTH 32
-#define OUTLIER_TH 4
-static struct {
-  float32_t history[RANGING_HISTORY_LENGTH];
-  size_t ptr;
-} rangingStats[LOCODECK_NR_OF_TWR_ANCHORS];
+// #define RANGING_HISTORY_LENGTH 32
+// #define OUTLIER_TH 4
+// static struct {
+//   float32_t history[RANGING_HISTORY_LENGTH];
+//   size_t ptr;
+// } rangingStats[LOCODECK_NR_OF_TWR_ANCHORS];
 
 // Rangin statistics
-static uint8_t rangingPerSec[LOCODECK_NR_OF_TWR_ANCHORS];
-static uint8_t rangingSuccessRate[LOCODECK_NR_OF_TWR_ANCHORS];
+// static uint8_t rangingPerSec[LOCODECK_NR_OF_TWR_ANCHORS];
+// static uint8_t rangingSuccessRate[LOCODECK_NR_OF_TWR_ANCHORS];
 // Used to calculate above values
-static uint8_t succededRanging[LOCODECK_NR_OF_TWR_ANCHORS];
-static uint8_t failedRanging[LOCODECK_NR_OF_TWR_ANCHORS];
+// static uint8_t succededRanging[LOCODECK_NR_OF_TWR_ANCHORS];
+// static uint8_t failedRanging[LOCODECK_NR_OF_TWR_ANCHORS];
 
 // Timestamps for ranging
 static dwTime_t poll_tx;
@@ -121,21 +121,22 @@ static dwTime_t final_tx;
 static dwTime_t final_rx;
 
 static packet_t txPacket;
-static volatile uint8_t curr_seq = 0;
-static int current_anchor = 0;
+static volatile uint8_t curr_tag = 0;
+// static volatile uint8_t curr_seq = 0;
+// static int current_anchor = 0;
 
-static bool ranging_complete = false;
-static bool lpp_transaction = false;
+// static bool ranging_complete = false;
+// static bool lpp_transaction = false;
 
-static lpsLppShortPacket_t lppShortPacket;
+// static lpsLppShortPacket_t lppShortPacket;
 
 // TDMA handling
-static bool tdmaSynchronized;
-static dwTime_t frameStart;
+// static bool tdmaSynchronized;
+// static dwTime_t frameStart;
 
 static bool rangingOk;
 
-static void lpsHandleLppShortPacket(const uint8_t srcId, const uint8_t *data);
+// static void lpsHandleLppShortPacket(const uint8_t srcId, const uint8_t *data);
 
 static void txcallback(dwDevice_t *dev)
 {
@@ -144,21 +145,20 @@ static void txcallback(dwDevice_t *dev)
   departure.full += (options->antennaDelay / 2);
 
   switch (txPacket.payload[0]) {
-    case LPS_TWR_POLL:
-      poll_tx = departure;
+    case LPS_TWR_ANSWER:
+      answer_tx = departure;
       break;
-    case LPS_TWR_FINAL:
-      final_tx = departure;
+    case LPS_TWR_REPORT:
       break;
   }
 }
 
 
-static uint32_t rxcallback(dwDevice_t *dev) {
+static void rxcallback(dwDevice_t *dev) {
   dwTime_t arival = { .full=0 };
   int dataLength = dwGetDataLength(dev);
 
-  if (dataLength == 0) return 0;
+  if (dataLength == 0) return;
 
   packet_t rxPacket;
   memset(&rxPacket, 0, MAC802154_HEADER_LENGTH);
@@ -169,7 +169,7 @@ static uint32_t rxcallback(dwDevice_t *dev) {
     dwNewReceive(dev);
     dwSetDefaults(dev);
     dwStartReceive(dev);
-    return MAX_TIMEOUT;
+    return;
   }
 
   txPacket.destAddress = rxPacket.sourceAddress;
@@ -177,255 +177,302 @@ static uint32_t rxcallback(dwDevice_t *dev) {
 
   switch(rxPacket.payload[LPS_TWR_TYPE]) {
     // Tag received messages
-    case LPS_TWR_ANSWER:
-      if (rxPacket.payload[LPS_TWR_SEQ] != curr_seq) {
-        return 0;
-      }
+    case LPS_TWR_POLL:
+      // if (rxPacket.payload[LPS_TWR_SEQ] != curr_seq) {
+      //   return 0;
+      // }
 
-      if (dataLength - MAC802154_HEADER_LENGTH > 3) {
-        if (rxPacket.payload[LPS_TWR_LPP_HEADER] == LPP_HEADER_SHORT_PACKET) {
-          int srcId = -1;
+      // if (dataLength - MAC802154_HEADER_LENGTH > 3) {
+      //   if (rxPacket.payload[LPS_TWR_LPP_HEADER] == LPP_HEADER_SHORT_PACKET) {
+      //     int srcId = -1;
 
-          for (int i=0; i<LOCODECK_NR_OF_TWR_ANCHORS; i++) {
-            if (rxPacket.sourceAddress == options->anchorAddress[i]) {
-              srcId = i;
-              break;
-            }
-          }
+      //     for (int i=0; i<LOCODECK_NR_OF_TWR_ANCHORS; i++) {
+      //       if (rxPacket.sourceAddress == options->anchorAddress[i]) {
+      //         srcId = i;
+      //         break;
+      //       }
+      //     }
 
-          if (srcId >= 0) {
-            lpsHandleLppShortPacket(srcId, &rxPacket.payload[LPS_TWR_LPP_TYPE]);
-          }
-        }
-      }
+      //     if (srcId >= 0) {
+      //       // lpsHandleLppShortPacket(srcId, &rxPacket.payload[LPS_TWR_LPP_TYPE]);
+      //     }
+      //   }
+      // }
 
-      txPacket.payload[LPS_TWR_TYPE] = LPS_TWR_FINAL;
+      curr_tag = (uint8_t)(rxPacket.sourceAddress & 0xFF);
+      int payloadLength = 2;
+      txPacket.payload[LPS_TWR_TYPE] = LPS_TWR_ANSWER;
       txPacket.payload[LPS_TWR_SEQ] = rxPacket.payload[LPS_TWR_SEQ];
 
-      dwGetReceiveTimestamp(dev, &arival);
-      arival.full -= (options->antennaDelay / 2);
-      answer_rx = arival;
+      txPacket.payload[LPS_TWR_LPP_HEADER] = LPS_TWR_LPP_SHORT;
+      txPacket.payload[LPS_TWR_LPP_TYPE] = 0x01;//LPP_SHORT_ANCHOR_POSITION;
+      // struct lppShortAnchorPosition_s *pos = (struct lppShortAnchorPosition_s*) &txPacket.payload[LPS_TWR_LPP_PAYLOAD];
+      // memcpy(pos->position, uwbConfig->position, 3*sizeof(float));
+      payloadLength += 2 + sizeof(struct lppShortAnchorPosition_s);
 
       dwNewTransmit(dev);
-      dwSetData(dev, (uint8_t*)&txPacket, MAC802154_HEADER_LENGTH+2);
+      dwSetDefaults(dev);//////
+      dwSetData(dev, (uint8_t*)&txPacket, MAC802154_HEADER_LENGTH+payloadLength);
 
       dwWaitForResponse(dev, true);
       dwStartTransmit(dev);
 
-      break;
-    case LPS_TWR_REPORT:
-    {
-      lpsTwrTagReportPayload_t *report = (lpsTwrTagReportPayload_t *)(rxPacket.payload+2);
-      double tround1, treply1, treply2, tround2, tprop_ctn, tprop;
+      dwGetReceiveTimestamp(dev, &arival);
+      arival.full -= (options->antennaDelay / 2);
+      poll_rx = arival;
 
-      if (rxPacket.payload[LPS_TWR_SEQ] != curr_seq) {
-        return 0;
+      break;
+    case LPS_TWR_FINAL:
+    {
+      // lpsTwrTagReportPayload_t *report = (lpsTwrTagReportPayload_t *)(rxPacket.payload+2);
+      // double tround1, treply1, treply2, tround2, tprop_ctn, tprop;
+
+      // if (rxPacket.payload[LPS_TWR_SEQ] != curr_seq) {
+      //   return 0;
+      // }
+
+      if (curr_tag == (uint8_t)(rxPacket.sourceAddress & 0xFF) ) {
+        lpsTwrTagReportPayload_t *report = (lpsTwrTagReportPayload_t *)(txPacket.payload+2);
+
+        dwGetReceiveTimestamp(dev, &arival);
+        arival.full -= (options->antennaDelay / 2);
+        final_rx = arival;
+
+        txPacket.payload[LPS_TWR_TYPE] = LPS_TWR_REPORT;
+        txPacket.payload[LPS_TWR_SEQ] = rxPacket.payload[LPS_TWR_SEQ];
+        memcpy(&report->pollRx, &poll_rx, 5);
+        memcpy(&report->answerTx, &answer_tx, 5);
+        memcpy(&report->finalRx, &final_rx, 5);
+        report->pressure = 0;
+        report->temperature = 0;
+        report->asl = 0;
+        report->pressure_ok = 1;
+
+        dwNewTransmit(dev);
+        dwSetDefaults(dev);
+        dwSetData(dev, (uint8_t*)&txPacket, MAC802154_HEADER_LENGTH+2+sizeof(lpsTwrTagReportPayload_t));
+
+        dwWaitForResponse(dev, true);
+        dwStartTransmit(dev);
+      } else {
+        dwNewReceive(dev);
+        dwSetDefaults(dev);
+        dwStartReceive(dev);
       }
 
-      memcpy(&poll_rx, &report->pollRx, 5);
-      memcpy(&answer_tx, &report->answerTx, 5);
-      memcpy(&final_rx, &report->finalRx, 5);
+      // tround1 = answer_rx.low32 - poll_tx.low32;
+      // treply1 = answer_tx.low32 - poll_rx.low32;
+      // tround2 = final_rx.low32 - answer_tx.low32;
+      // treply2 = final_tx.low32 - answer_rx.low32;
 
-      tround1 = answer_rx.low32 - poll_tx.low32;
-      treply1 = answer_tx.low32 - poll_rx.low32;
-      tround2 = final_rx.low32 - answer_tx.low32;
-      treply2 = final_tx.low32 - answer_rx.low32;
+      // tprop_ctn = ((tround1*tround2) - (treply1*treply2)) / (tround1 + tround2 + treply1 + treply2);
 
-      tprop_ctn = ((tround1*tround2) - (treply1*treply2)) / (tround1 + tround2 + treply1 + treply2);
-
-      tprop = tprop_ctn / LOCODECK_TS_FREQ;
-      state.distance[current_anchor] = SPEED_OF_LIGHT * tprop;
-      state.pressures[current_anchor] = report->asl;
+      // tprop = tprop_ctn / LOCODECK_TS_FREQ;
+      // state.distance[current_anchor] = SPEED_OF_LIGHT * tprop;
+      // state.pressures[current_anchor] = report->asl;
 
       // Outliers rejection
-      rangingStats[current_anchor].ptr = (rangingStats[current_anchor].ptr + 1) % RANGING_HISTORY_LENGTH;
-      float32_t mean;
-      float32_t stddev;
+      // rangingStats[current_anchor].ptr = (rangingStats[current_anchor].ptr + 1) % RANGING_HISTORY_LENGTH;
+      // float32_t mean;
+      // float32_t stddev;
 
-      arm_std_f32(rangingStats[current_anchor].history, RANGING_HISTORY_LENGTH, &stddev);
-      arm_mean_f32(rangingStats[current_anchor].history, RANGING_HISTORY_LENGTH, &mean);
-      float32_t diff = fabsf(mean - state.distance[current_anchor]);
+      // arm_std_f32(rangingStats[current_anchor].history, RANGING_HISTORY_LENGTH, &stddev);
+      // arm_mean_f32(rangingStats[current_anchor].history, RANGING_HISTORY_LENGTH, &mean);
+      // // float32_t diff = fabsf(mean - state.distance[current_anchor]);
 
-      rangingStats[current_anchor].history[rangingStats[current_anchor].ptr] = state.distance[current_anchor];
+      // rangingStats[current_anchor].history[rangingStats[current_anchor].ptr] = state.distance[current_anchor];
 
       rangingOk = true;
 
-      if ((options->combinedAnchorPositionOk || options->anchorPosition[current_anchor].timestamp) &&
-          (diff < (OUTLIER_TH*stddev))) {
-        distanceMeasurement_t dist;
-        dist.distance = state.distance[current_anchor];
-        dist.x = options->anchorPosition[current_anchor].x;
-        dist.y = options->anchorPosition[current_anchor].y;
-        dist.z = options->anchorPosition[current_anchor].z;
-        dist.stdDev = 0.25;
-        estimatorEnqueueDistance(&dist);
+      // if ((options->combinedAnchorPositionOk || options->anchorPosition[current_anchor].timestamp) &&
+      //     (diff < (OUTLIER_TH*stddev))) {
+      //   distanceMeasurement_t dist;
+      //   dist.distance = state.distance[current_anchor];
+      //   dist.x = options->anchorPosition[current_anchor].x;
+      //   dist.y = options->anchorPosition[current_anchor].y;
+      //   dist.z = options->anchorPosition[current_anchor].z;
+      //   dist.stdDev = 0.25;
+      //   estimatorEnqueueDistance(&dist);
+      // }
+
+      // if (options->useTdma && current_anchor == 0) {
+      //   // Final packet is sent by us and received by the anchor
+      //   // We use it as synchonisation time for TDMA
+      //   dwTime_t offset = { .full =final_tx.full - final_rx.full };
+      //   frameStart.full = TDMA_LAST_FRAME(final_rx.full) + offset.full;
+      //   tdmaSynchronized = true;
+      // }
+
+      // ranging_complete = true;
+
+      break;
+    }
+    case LPS_TWR_LPP_SHORT:
+    {
+      if(curr_tag == ((uint8_t)(rxPacket.sourceAddress & 0xFF)) && dataLength-MAC802154_HEADER_LENGTH > 1) {
+        //lppHandleShortPacket(&rxPacket.payload[1], dataLength-MAC802154_HEADER_LENGTH-1);
       }
 
-      if (options->useTdma && current_anchor == 0) {
-        // Final packet is sent by us and received by the anchor
-        // We use it as synchonisation time for TDMA
-        dwTime_t offset = { .full =final_tx.full - final_rx.full };
-        frameStart.full = TDMA_LAST_FRAME(final_rx.full) + offset.full;
-        tdmaSynchronized = true;
-      }
+      dwNewReceive(dev);
+      dwSetDefaults(dev);
+      dwStartReceive(dev);
 
-      ranging_complete = true;
-
-      return 0;
       break;
     }
   }
-  return MAX_TIMEOUT;
 }
 
 /* Adjust time for schedule transfer by DW1000 radio. Set 9 LSB to 0 */
-static uint32_t adjustTxRxTime(dwTime_t *time)
-{
-  uint32_t added = (1<<9) - (time->low32 & ((1<<9)-1));
-  time->low32 = (time->low32 & ~((1<<9)-1)) + (1<<9);
-  return added;
-}
+// static uint32_t adjustTxRxTime(dwTime_t *time)
+// {
+//   uint32_t added = (1<<9) - (time->low32 & ((1<<9)-1));
+//   time->low32 = (time->low32 & ~((1<<9)-1)) + (1<<9);
+//   return added;
+// }
 
 /* Calculate the transmit time for a given timeslot in the current frame */
-static dwTime_t transmitTimeForSlot(int slot)
-{
-  dwTime_t transmitTime = { .full = 0 };
-  // Calculate start of the slot
-  transmitTime.full = frameStart.full + slot*TDMA_SLOT_LEN;
+// static dwTime_t transmitTimeForSlot(int slot)
+// {
+//   dwTime_t transmitTime = { .full = 0 };
+//   // Calculate start of the slot
+//   transmitTime.full = frameStart.full + slot*TDMA_SLOT_LEN;
 
-  // DW1000 can only schedule time with 9 LSB at 0, adjust for it
-  adjustTxRxTime(&transmitTime);
-  return transmitTime;
-}
+//   // DW1000 can only schedule time with 9 LSB at 0, adjust for it
+//   adjustTxRxTime(&transmitTime);
+//   return transmitTime;
+// }
 
-static void initiateRanging(dwDevice_t *dev)
-{
-  if (!options->useTdma || tdmaSynchronized) {
-    if (options->useTdma) {
-      // go to next TDMA frame
-      frameStart.full += TDMA_FRAME_LEN;
-    }
+// static void initiateRanging(dwDevice_t *dev)
+// {
+//   // if (!options->useTdma || tdmaSynchronized) {
+//   //   // if (options->useTdma) {
+//   //   //   // go to next TDMA frame
+//   //   //   frameStart.full += TDMA_FRAME_LEN;
+//   //   // }
 
-    current_anchor ++;
-    if (current_anchor >= LOCODECK_NR_OF_TWR_ANCHORS) {
-      current_anchor = 0;
-    }
-  } else {
-    current_anchor = 0;
-  }
+//   //   current_anchor ++;
+//   //   if (current_anchor >= LOCODECK_NR_OF_TWR_ANCHORS) {
+//   //     current_anchor = 0;
+//   //   }
+//   // } else {
+//   //   current_anchor = 0;
+//   // }
 
-  dwIdle(dev);
+//   dwIdle(dev);
 
-  txPacket.payload[LPS_TWR_TYPE] = LPS_TWR_POLL;
-  txPacket.payload[LPS_TWR_SEQ] = ++curr_seq;
+//   txPacket.payload[LPS_TWR_TYPE] = LPS_TWR_POLL;
+//   // txPacket.payload[LPS_TWR_SEQ] = ++curr_seq;
 
-  txPacket.sourceAddress = options->tagAddress;
-  txPacket.destAddress = options->anchorAddress[current_anchor];
+//   txPacket.sourceAddress = options->tagAddress;
+//   txPacket.destAddress = options->anchorAddress[current_anchor];
 
-  dwNewTransmit(dev);
-  dwSetDefaults(dev);
-  dwSetData(dev, (uint8_t*)&txPacket, MAC802154_HEADER_LENGTH+2);
+//   dwNewTransmit(dev);
+//   dwSetDefaults(dev);
+//   dwSetData(dev, (uint8_t*)&txPacket, MAC802154_HEADER_LENGTH+2);
 
-  if (options->useTdma && tdmaSynchronized) {
-    dwTime_t txTime = transmitTimeForSlot(options->tdmaSlot);
-    dwSetTxRxTime(dev, txTime);
-  }
+//   // if (options->useTdma && tdmaSynchronized) {
+//   //   dwTime_t txTime = transmitTimeForSlot(options->tdmaSlot);
+//   //   dwSetTxRxTime(dev, txTime);
+//   // }
 
-  dwWaitForResponse(dev, true);
-  dwStartTransmit(dev);
-}
+//   dwWaitForResponse(dev, true);
+//   dwStartTransmit(dev);
+// }
 
-static void sendLppShort(dwDevice_t *dev, lpsLppShortPacket_t *packet)
-{
-  dwIdle(dev);
+// static void sendLppShort(dwDevice_t *dev, lpsLppShortPacket_t *packet)
+// {
+//   dwIdle(dev);
 
-  txPacket.payload[LPS_TWR_TYPE] = LPS_TWR_LPP_SHORT;
-  memcpy(&txPacket.payload[LPS_TWR_SEND_LPP_PAYLOAD], packet->data, packet->length);
+//   txPacket.payload[LPS_TWR_TYPE] = LPS_TWR_LPP_SHORT;
+//   memcpy(&txPacket.payload[LPS_TWR_SEND_LPP_PAYLOAD], packet->data, packet->length);
 
-  txPacket.sourceAddress = options->tagAddress;
-  txPacket.destAddress = options->anchorAddress[packet->dest];
+//   txPacket.sourceAddress = options->tagAddress;
+//   txPacket.destAddress = options->anchorAddress[packet->dest];
 
-  dwNewTransmit(dev);
-  dwSetDefaults(dev);
-  dwSetData(dev, (uint8_t*)&txPacket, MAC802154_HEADER_LENGTH+1+packet->length);
+//   dwNewTransmit(dev);
+//   dwSetDefaults(dev);
+//   dwSetData(dev, (uint8_t*)&txPacket, MAC802154_HEADER_LENGTH+1+packet->length);
 
-  dwWaitForResponse(dev, false);
-  dwStartTransmit(dev);
-}
+//   dwWaitForResponse(dev, false);
+//   dwStartTransmit(dev);
+// }
 
 static uint32_t twrTagOnEvent(dwDevice_t *dev, uwbEvent_t event)
 {
-  static uint32_t statisticStartTick = 0;
+  // static uint32_t statisticStartTick = 0;
 
-  if (statisticStartTick == 0) {
-    statisticStartTick = xTaskGetTickCount();
-  }
+  // if (statisticStartTick == 0) {
+  //   statisticStartTick = xTaskGetTickCount();
+  // }
 
   switch(event) {
     case eventPacketReceived:
-      return rxcallback(dev);
+      rxcallback(dev);
       break;
     case eventPacketSent:
       txcallback(dev);
 
-      if (lpp_transaction) {
-        return 0;
-      }
-      return MAX_TIMEOUT;
+      // if (lpp_transaction) {
+      //   return 0;
+      // }
+      // return MAX_TIMEOUT;
       break;
     case eventTimeout:  // Comes back to timeout after each ranging attempt
-      {
-        uint16_t rangingState = locoDeckGetRangingState();
-        if (!ranging_complete && !lpp_transaction) {
-          rangingState &= ~(1<<current_anchor);
-          if (state.failedRanging[current_anchor] < options->rangingFailedThreshold) {
-            state.failedRanging[current_anchor] ++;
-            rangingState |= (1<<current_anchor);
-          }
+      // {
+        // uint16_t rangingState = locoDeckGetRangingState();
+        // if (!ranging_complete && !lpp_transaction) {
+        //   rangingState &= ~(1<<current_anchor);
+        //   if (state.failedRanging[current_anchor] < options->rangingFailedThreshold) {
+        //     state.failedRanging[current_anchor] ++;
+        //     rangingState |= (1<<current_anchor);
+        //   }
 
-          locSrvSendRangeFloat(current_anchor, NAN);
-          failedRanging[current_anchor]++;
-        } else {
-          rangingState |= (1<<current_anchor);
-          state.failedRanging[current_anchor] = 0;
+        //   locSrvSendRangeFloat(current_anchor, NAN);
+        //   failedRanging[current_anchor]++;
+        // } else {
+        //   rangingState |= (1<<current_anchor);
+        //   state.failedRanging[current_anchor] = 0;
 
-          locSrvSendRangeFloat(current_anchor, state.distance[current_anchor]);
-          succededRanging[current_anchor]++;
-        }
-        locoDeckSetRangingState(rangingState);
-      }
+        //   locSrvSendRangeFloat(current_anchor, state.distance[current_anchor]);
+        //   succededRanging[current_anchor]++;
+        // }
+        // locoDeckSetRangingState(rangingState);
+      // }
 
       // Handle ranging statistic
-      if (xTaskGetTickCount() > (statisticStartTick+1000)) {
-        statisticStartTick = xTaskGetTickCount();
+      // if (xTaskGetTickCount() > (statisticStartTick+1000)) {
+      //   statisticStartTick = xTaskGetTickCount();
 
-        for (int i=0; i<LOCODECK_NR_OF_TWR_ANCHORS; i++) {
-          rangingPerSec[i] = failedRanging[i] + succededRanging[i];
-          if (rangingPerSec[i] > 0) {
-            rangingSuccessRate[i] = 100.0f*(float)succededRanging[i] / (float)rangingPerSec[i];
-          } else {
-            rangingSuccessRate[i] = 0.0f;
-          }
+      //   for (int i=0; i<LOCODECK_NR_OF_TWR_ANCHORS; i++) {
+      //     rangingPerSec[i] = failedRanging[i] + succededRanging[i];
+      //     if (rangingPerSec[i] > 0) {
+      //       rangingSuccessRate[i] = 100.0f*(float)succededRanging[i] / (float)rangingPerSec[i];
+      //     } else {
+      //       rangingSuccessRate[i] = 0.0f;
+      //     }
 
-          failedRanging[i] = 0;
-          succededRanging[i] = 0;
-        }
-      }
+      //     failedRanging[i] = 0;
+      //     succededRanging[i] = 0;
+      //   }
+      // }
 
 
-      if (lpsGetLppShort(&lppShortPacket)) {
-        lpp_transaction = true;
-        sendLppShort(dev, &lppShortPacket);
-      } else {
-        lpp_transaction = false;
-        ranging_complete = false;
-        initiateRanging(dev);
-      }
-      return MAX_TIMEOUT;
-      break;
-    case eventReceiveTimeout:
+      // if (lpsGetLppShort(&lppShortPacket)) {
+      //   lpp_transaction = true;
+      //   //sendLppShort(dev, &lppShortPacket);
+      // } else {
+      //   lpp_transaction = false;
+      //   // ranging_complete = false;
+      //   initiateRanging(dev);
+      // }
+      // return MAX_TIMEOUT;
+      // break;
+    case eventReceiveTimeout://////////////////
     case eventReceiveFailed:
-      return 0;
+      // return 0;
+      dwNewReceive(dev);
+      dwSetDefaults(dev);
+      dwStartReceive(dev);
       break;
     default:
       configASSERT(false);
@@ -435,38 +482,38 @@ static uint32_t twrTagOnEvent(dwDevice_t *dev, uwbEvent_t event)
 }
 
 // Loco Posisioning Protocol (LPP) handling
-static void lpsHandleLppShortPacket(const uint8_t srcId, const uint8_t *data)
-{
-  uint8_t type = data[0];
+// static void lpsHandleLppShortPacket(const uint8_t srcId, const uint8_t *data)
+// {
+//   uint8_t type = data[0];
 
-  if (type == LPP_SHORT_ANCHORPOS) {
-    if (srcId < LOCODECK_NR_OF_TWR_ANCHORS) {
-      struct lppShortAnchorPos_s *newpos = (struct lppShortAnchorPos_s*)&data[1];
-      options->anchorPosition[srcId].timestamp = xTaskGetTickCount();
-      options->anchorPosition[srcId].x = newpos->x;
-      options->anchorPosition[srcId].y = newpos->y;
-      options->anchorPosition[srcId].z = newpos->z;
-    }
-  }
-}
+//   if (type == LPP_SHORT_ANCHORPOS) {
+//     if (srcId < LOCODECK_NR_OF_TWR_ANCHORS) {
+//       struct lppShortAnchorPos_s *newpos = (struct lppShortAnchorPos_s*)&data[1];
+//       options->anchorPosition[srcId].timestamp = xTaskGetTickCount();
+//       options->anchorPosition[srcId].x = newpos->x;
+//       options->anchorPosition[srcId].y = newpos->y;
+//       options->anchorPosition[srcId].z = newpos->z;
+//     }
+//   }
+// }
 
-static void updateTagTdmaSlot(lpsTwrAlgoOptions_t * options)
-{
-  if (options->tdmaSlot < 0) {
-    uint64_t radioAddress = configblockGetRadioAddress();
-    int nslot = 1;
-    for (int i=0; i<TDMA_NSLOTS_BITS; i++) {
-      nslot *= 2;
-    }
-    options->tdmaSlot = radioAddress % nslot;
-  }
-  options->tagAddress += options->tdmaSlot;
-}
+// static void updateTagTdmaSlot(lpsTwrAlgoOptions_t * options)
+// {
+//   if (options->tdmaSlot < 0) {
+//     uint64_t radioAddress = configblockGetRadioAddress();
+//     int nslot = 1;
+//     for (int i=0; i<TDMA_NSLOTS_BITS; i++) {
+//       nslot *= 2;
+//     }
+//     options->tdmaSlot = radioAddress % nslot;
+//   }
+//   options->tagAddress += options->tdmaSlot;
+// }
 
 
 static void twrTagInit(dwDevice_t *dev)
 {
-  updateTagTdmaSlot(options);
+  // updateTagTdmaSlot(options);
 
   // Initialize the packet in the TX buffer
   memset(&txPacket, 0, sizeof(txPacket));
@@ -480,21 +527,21 @@ static void twrTagInit(dwDevice_t *dev)
   memset(&final_tx, 0, sizeof(final_tx));
   memset(&final_rx, 0, sizeof(final_rx));
 
-  curr_seq = 0;
-  current_anchor = 0;
+  // curr_seq = 0;
+  // current_anchor = 0;
 
-  locoDeckSetRangingState(0);
-  ranging_complete = false;
+  // locoDeckSetRangingState(0);
+  // ranging_complete = false;
 
-  tdmaSynchronized = false;
+  // tdmaSynchronized = false;
 
-  memset(state.distance, 0, sizeof(state.distance));
-  memset(state.pressures, 0, sizeof(state.pressures));
-  memset(state.failedRanging, 0, sizeof(state.failedRanging));
+  // memset(state.distance, 0, sizeof(state.distance));
+  // memset(state.pressures, 0, sizeof(state.pressures));
+  // memset(state.failedRanging, 0, sizeof(state.failedRanging));
 
-  dwSetReceiveWaitTimeout(dev, TWR_RECEIVE_TIMEOUT);
+  // dwSetReceiveWaitTimeout(dev, TWR_RECEIVE_TIMEOUT);
 
-  dwCommitConfiguration(dev);
+  // dwCommitConfiguration(dev);
 
   rangingOk = false;
 }
@@ -504,13 +551,13 @@ static bool isRangingOk()
   return rangingOk;
 }
 
-void uwbTwrTagSetOptions(lpsTwrAlgoOptions_t* newOptions) {
-  options = newOptions;
-}
+// void uwbTwrTagSetOptions(lpsTwrAlgoOptions_t* newOptions) {
+//   options = newOptions;
+// }
 
-float lpsTwrTagGetDistance(const uint8_t anchorId) {
-  return state.distance[anchorId];
-}
+// float lpsTwrTagGetDistance(const uint8_t anchorId) {
+//   return state.distance[anchorId];
+// }
 
 static bool getAnchorPosition(const uint8_t anchorId, point_t* position) {
   if (anchorId < LOCODECK_NR_OF_TWR_ANCHORS) {
@@ -522,24 +569,24 @@ static bool getAnchorPosition(const uint8_t anchorId, point_t* position) {
 }
 
 static uint8_t getAnchorIdList(uint8_t unorderedAnchorList[], const int maxListSize) {
-  for (int i = 0; i < LOCODECK_NR_OF_TWR_ANCHORS; i++) {
-    unorderedAnchorList[i] = i;
-  }
+  // for (int i = 0; i < LOCODECK_NR_OF_TWR_ANCHORS; i++) {
+  //   unorderedAnchorList[i] = i;
+  // }
 
   return LOCODECK_NR_OF_TWR_ANCHORS;
 }
 
 static uint8_t getActiveAnchorIdList(uint8_t unorderedAnchorList[], const int maxListSize) {
-  uint8_t count = 0;
+  // uint8_t count = 0;
 
-  for (int i = 0; i < LOCODECK_NR_OF_TWR_ANCHORS; i++) {
-    if (state.failedRanging[i] < options->rangingFailedThreshold) {
-      unorderedAnchorList[count] = i;
-      count++;
-    }
-  }
+  // for (int i = 0; i < LOCODECK_NR_OF_TWR_ANCHORS; i++) {
+  //   if (state.failedRanging[i] < options->rangingFailedThreshold) {
+  //     unorderedAnchorList[count] = i;
+  //     count++;
+  //   }
+  // }
 
-  return count;
+  return LOCODECK_NR_OF_TWR_ANCHORS;
 }
 
 uwbAlgorithm_t uwbTwrTagAlgorithm = {
@@ -551,68 +598,68 @@ uwbAlgorithm_t uwbTwrTagAlgorithm = {
   .getActiveAnchorIdList = getActiveAnchorIdList,
 };
 
-LOG_GROUP_START(twr)
-LOG_ADD(LOG_UINT8, rangingSuccessRate0, &rangingSuccessRate[0])
-LOG_ADD(LOG_UINT8, rangingPerSec0, &rangingPerSec[0])
-LOG_ADD(LOG_UINT8, rangingSuccessRate1, &rangingSuccessRate[1])
-LOG_ADD(LOG_UINT8, rangingPerSec1, &rangingPerSec[1])
-LOG_ADD(LOG_UINT8, rangingSuccessRate2, &rangingSuccessRate[2])
-LOG_ADD(LOG_UINT8, rangingPerSec2, &rangingPerSec[2])
-LOG_ADD(LOG_UINT8, rangingSuccessRate3, &rangingSuccessRate[3])
-LOG_ADD(LOG_UINT8, rangingPerSec3, &rangingPerSec[3])
-LOG_ADD(LOG_UINT8, rangingSuccessRate4, &rangingSuccessRate[4])
-LOG_ADD(LOG_UINT8, rangingPerSec4, &rangingPerSec[4])
-LOG_ADD(LOG_UINT8, rangingSuccessRate5, &rangingSuccessRate[5])
-LOG_ADD(LOG_UINT8, rangingPerSec5, &rangingPerSec[5])
-LOG_GROUP_STOP(twr)
+// LOG_GROUP_START(twr)
+// LOG_ADD(LOG_UINT8, rangingSuccessRate0, &rangingSuccessRate[0])
+// LOG_ADD(LOG_UINT8, rangingPerSec0, &rangingPerSec[0])
+// LOG_ADD(LOG_UINT8, rangingSuccessRate1, &rangingSuccessRate[1])
+// LOG_ADD(LOG_UINT8, rangingPerSec1, &rangingPerSec[1])
+// LOG_ADD(LOG_UINT8, rangingSuccessRate2, &rangingSuccessRate[2])
+// LOG_ADD(LOG_UINT8, rangingPerSec2, &rangingPerSec[2])
+// LOG_ADD(LOG_UINT8, rangingSuccessRate3, &rangingSuccessRate[3])
+// LOG_ADD(LOG_UINT8, rangingPerSec3, &rangingPerSec[3])
+// LOG_ADD(LOG_UINT8, rangingSuccessRate4, &rangingSuccessRate[4])
+// LOG_ADD(LOG_UINT8, rangingPerSec4, &rangingPerSec[4])
+// LOG_ADD(LOG_UINT8, rangingSuccessRate5, &rangingSuccessRate[5])
+// LOG_ADD(LOG_UINT8, rangingPerSec5, &rangingPerSec[5])
+// LOG_GROUP_STOP(twr)
 
-LOG_GROUP_START(ranging)
-#if (LOCODECK_NR_OF_TWR_ANCHORS > 0)
-LOG_ADD(LOG_FLOAT, distance0, &state.distance[0])
-#endif
-#if (LOCODECK_NR_OF_TWR_ANCHORS > 1)
-LOG_ADD(LOG_FLOAT, distance1, &state.distance[1])
-#endif
-#if (LOCODECK_NR_OF_TWR_ANCHORS > 2)
-LOG_ADD(LOG_FLOAT, distance2, &state.distance[2])
-#endif
-#if (LOCODECK_NR_OF_TWR_ANCHORS > 3)
-LOG_ADD(LOG_FLOAT, distance3, &state.distance[3])
-#endif
-#if (LOCODECK_NR_OF_TWR_ANCHORS > 4)
-LOG_ADD(LOG_FLOAT, distance4, &state.distance[4])
-#endif
-#if (LOCODECK_NR_OF_TWR_ANCHORS > 5)
-LOG_ADD(LOG_FLOAT, distance5, &state.distance[5])
-#endif
-#if (LOCODECK_NR_OF_TWR_ANCHORS > 6)
-LOG_ADD(LOG_FLOAT, distance6, &state.distance[6])
-#endif
-#if (LOCODECK_NR_OF_TWR_ANCHORS > 7)
-LOG_ADD(LOG_FLOAT, distance7, &state.distance[7])
-#endif
-#if (LOCODECK_NR_OF_TWR_ANCHORS > 0)
-LOG_ADD(LOG_FLOAT, pressure0, &state.pressures[0])
-#endif
-#if (LOCODECK_NR_OF_TWR_ANCHORS > 1)
-LOG_ADD(LOG_FLOAT, pressure1, &state.pressures[1])
-#endif
-#if (LOCODECK_NR_OF_TWR_ANCHORS > 2)
-LOG_ADD(LOG_FLOAT, pressure2, &state.pressures[2])
-#endif
-#if (LOCODECK_NR_OF_TWR_ANCHORS > 3)
-LOG_ADD(LOG_FLOAT, pressure3, &state.pressures[3])
-#endif
-#if (LOCODECK_NR_OF_TWR_ANCHORS > 4)
-LOG_ADD(LOG_FLOAT, pressure4, &state.pressures[4])
-#endif
-#if (LOCODECK_NR_OF_TWR_ANCHORS > 5)
-LOG_ADD(LOG_FLOAT, pressure5, &state.pressures[5])
-#endif
-#if (LOCODECK_NR_OF_TWR_ANCHORS > 6)
-LOG_ADD(LOG_FLOAT, pressure6, &state.pressures[6])
-#endif
-#if (LOCODECK_NR_OF_TWR_ANCHORS > 7)
-LOG_ADD(LOG_FLOAT, pressure7, &state.pressures[7])
-#endif
-LOG_GROUP_STOP(ranging)
+// LOG_GROUP_START(ranging)
+// #if (LOCODECK_NR_OF_TWR_ANCHORS > 0)
+// LOG_ADD(LOG_FLOAT, distance0, &state.distance[0])
+// #endif
+// #if (LOCODECK_NR_OF_TWR_ANCHORS > 1)
+// LOG_ADD(LOG_FLOAT, distance1, &state.distance[1])
+// #endif
+// #if (LOCODECK_NR_OF_TWR_ANCHORS > 2)
+// LOG_ADD(LOG_FLOAT, distance2, &state.distance[2])
+// #endif
+// #if (LOCODECK_NR_OF_TWR_ANCHORS > 3)
+// LOG_ADD(LOG_FLOAT, distance3, &state.distance[3])
+// #endif
+// #if (LOCODECK_NR_OF_TWR_ANCHORS > 4)
+// LOG_ADD(LOG_FLOAT, distance4, &state.distance[4])
+// #endif
+// #if (LOCODECK_NR_OF_TWR_ANCHORS > 5)
+// LOG_ADD(LOG_FLOAT, distance5, &state.distance[5])
+// #endif
+// #if (LOCODECK_NR_OF_TWR_ANCHORS > 6)
+// LOG_ADD(LOG_FLOAT, distance6, &state.distance[6])
+// #endif
+// #if (LOCODECK_NR_OF_TWR_ANCHORS > 7)
+// LOG_ADD(LOG_FLOAT, distance7, &state.distance[7])
+// #endif
+// #if (LOCODECK_NR_OF_TWR_ANCHORS > 0)
+// LOG_ADD(LOG_FLOAT, pressure0, &state.pressures[0])
+// #endif
+// #if (LOCODECK_NR_OF_TWR_ANCHORS > 1)
+// LOG_ADD(LOG_FLOAT, pressure1, &state.pressures[1])
+// #endif
+// #if (LOCODECK_NR_OF_TWR_ANCHORS > 2)
+// LOG_ADD(LOG_FLOAT, pressure2, &state.pressures[2])
+// #endif
+// #if (LOCODECK_NR_OF_TWR_ANCHORS > 3)
+// LOG_ADD(LOG_FLOAT, pressure3, &state.pressures[3])
+// #endif
+// #if (LOCODECK_NR_OF_TWR_ANCHORS > 4)
+// LOG_ADD(LOG_FLOAT, pressure4, &state.pressures[4])
+// #endif
+// #if (LOCODECK_NR_OF_TWR_ANCHORS > 5)
+// LOG_ADD(LOG_FLOAT, pressure5, &state.pressures[5])
+// #endif
+// #if (LOCODECK_NR_OF_TWR_ANCHORS > 6)
+// LOG_ADD(LOG_FLOAT, pressure6, &state.pressures[6])
+// #endif
+// #if (LOCODECK_NR_OF_TWR_ANCHORS > 7)
+// LOG_ADD(LOG_FLOAT, pressure7, &state.pressures[7])
+// #endif
+// LOG_GROUP_STOP(ranging)
