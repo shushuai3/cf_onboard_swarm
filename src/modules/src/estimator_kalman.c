@@ -956,33 +956,33 @@ static void stateEstimatorUpdateWithPosition(positionMeasurement_t *xyz)
 
 static void stateEstimatorUpdateWithDistance(distanceMeasurement_t *d)
 {
-  // a measurement of distance to point (x, y, z)
-  float h[STATE_DIM] = {0};
-  arm_matrix_instance_f32 H = {1, STATE_DIM, h};
+  // // a measurement of distance to point (x, y, z)
+  // float h[STATE_DIM] = {0};
+  // arm_matrix_instance_f32 H = {1, STATE_DIM, h};
 
-  float dx = S[STATE_X] - d->x;
-  float dy = S[STATE_Y] - d->y;
-  float dz = S[STATE_Z] - d->z;
+  // float dx = S[STATE_X] - d->x;
+  // float dy = S[STATE_Y] - d->y;
+  // float dz = S[STATE_Z] - d->z;
 
-  float measuredDistance = d->distance;
+  // float measuredDistance = d->distance;
 
-  float predictedDistance = arm_sqrt(powf(dx, 2) + powf(dy, 2) + powf(dz, 2));
-  if (predictedDistance != 0.0f)
-  {
-    // The measurement is: z = sqrt(dx^2 + dy^2 + dz^2). The derivative dz/dX gives h.
-    h[STATE_X] = dx/predictedDistance;
-    h[STATE_Y] = dy/predictedDistance;
-    h[STATE_Z] = dz/predictedDistance;
-  }
-  else
-  {
-    // Avoid divide by zero
-    h[STATE_X] = 1.0f;
-    h[STATE_Y] = 0.0f;
-    h[STATE_Z] = 0.0f;
-  }
+  // float predictedDistance = arm_sqrt(powf(dx, 2) + powf(dy, 2) + powf(dz, 2));
+  // if (predictedDistance != 0.0f)
+  // {
+  //   // The measurement is: z = sqrt(dx^2 + dy^2 + dz^2). The derivative dz/dX gives h.
+  //   h[STATE_X] = dx/predictedDistance;
+  //   h[STATE_Y] = dy/predictedDistance;
+  //   h[STATE_Z] = dz/predictedDistance;
+  // }
+  // else
+  // {
+  //   // Avoid divide by zero
+  //   h[STATE_X] = 1.0f;
+  //   h[STATE_Y] = 0.0f;
+  //   h[STATE_Z] = 0.0f;
+  // }
 
-  stateEstimatorScalarUpdate(&H, measuredDistance-predictedDistance, d->stdDev);
+  // stateEstimatorScalarUpdate(&H, measuredDistance-predictedDistance, d->stdDev);
 }
 
 static void stateEstimatorUpdateWithTDOA(tdoaMeasurement_t *tdoa)

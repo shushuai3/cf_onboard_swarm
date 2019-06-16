@@ -25,7 +25,7 @@
 #ifdef LOCODECK_NR_OF_ANCHORS
 #define LOCODECK_NR_OF_TWR_ANCHORS LOCODECK_NR_OF_ANCHORS
 #else
-#define LOCODECK_NR_OF_TWR_ANCHORS 8
+#define LOCODECK_NR_OF_TWR_ANCHORS 1
 #endif
 
 extern uwbAlgorithm_t uwbTwrTagAlgorithm;

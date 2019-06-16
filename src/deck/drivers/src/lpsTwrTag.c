@@ -52,11 +52,21 @@ static lpsTwrAlgoOptions_t defaultOptions = {
    .tagAddress = 0xbccf000000000008,
    .anchorAddress = {
      0xbccf000000000000,
+ #if LOCODECK_NR_OF_TWR_ANCHORS > 1
      0xbccf000000000001,
+ #endif
+ #if LOCODECK_NR_OF_TWR_ANCHORS > 2
      0xbccf000000000002,
+ #endif
+ #if LOCODECK_NR_OF_TWR_ANCHORS > 3
      0xbccf000000000003,
+ #endif
+ #if LOCODECK_NR_OF_TWR_ANCHORS > 4
      0xbccf000000000004,
+ #endif
+ #if LOCODECK_NR_OF_TWR_ANCHORS > 5
      0xbccf000000000005,
+ #endif
  #if LOCODECK_NR_OF_TWR_ANCHORS > 6
      0xbccf000000000006,
  #endif
