@@ -281,7 +281,19 @@ static uint32_t rxcallback(dwDevice_t *dev) {
 
       ranging_complete = true;
 
-      return 0;
+      lpsTwrTagReportPayload_t *report2 = (lpsTwrTagReportPayload_t *)(txPacket.payload+2);
+      txPacket.payload[LPS_TWR_TYPE] = LPS_TWR_REPORT+1;
+      txPacket.payload[LPS_TWR_SEQ] = rxPacket.payload[LPS_TWR_SEQ];
+      memcpy(&report2->pollRx, &poll_tx, 5);
+      memcpy(&report2->answerTx, &answer_rx, 5);
+      memcpy(&report2->finalRx, &final_tx, 5);
+      dwNewTransmit(dev);
+      dwSetDefaults(dev);
+      dwSetData(dev, (uint8_t*)&txPacket, MAC802154_HEADER_LENGTH+2+sizeof(lpsTwrTagReportPayload_t));
+      dwWaitForResponse(dev, true);
+      dwStartTransmit(dev);
+      
+      ///////////////// return 0;  // key for transmiting report2
       break;
     }
   }
