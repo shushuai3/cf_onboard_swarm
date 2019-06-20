@@ -88,22 +88,22 @@ static lpsTwrAlgoOptions_t defaultOptions = {
  //   .combinedAnchorPositionOk = true,
 };
 
-// typedef struct {
-//   float distance[LOCODECK_NR_OF_TWR_ANCHORS];
-//   float pressures[LOCODECK_NR_OF_TWR_ANCHORS];
-//   int failedRanging[LOCODECK_NR_OF_TWR_ANCHORS];
-// } twrState_t;
+typedef struct {
+  float distance[LOCODECK_NR_OF_TWR_ANCHORS];
+  float pressures[LOCODECK_NR_OF_TWR_ANCHORS];
+  int failedRanging[LOCODECK_NR_OF_TWR_ANCHORS];
+} twrState_t;
 
-// static twrState_t state;
+static twrState_t state;
 static lpsTwrAlgoOptions_t* options = &defaultOptions;
 
 // Outlier rejection
-// #define RANGING_HISTORY_LENGTH 32
-// #define OUTLIER_TH 4
-// static struct {
-//   float32_t history[RANGING_HISTORY_LENGTH];
-//   size_t ptr;
-// } rangingStats[LOCODECK_NR_OF_TWR_ANCHORS];
+#define RANGING_HISTORY_LENGTH 32
+#define OUTLIER_TH 4
+static struct {
+  float32_t history[RANGING_HISTORY_LENGTH];
+  size_t ptr;
+} rangingStats[LOCODECK_NR_OF_TWR_ANCHORS];
 
 // Rangin statistics
 // static uint8_t rangingPerSec[LOCODECK_NR_OF_TWR_ANCHORS];
@@ -319,6 +319,59 @@ static void rxcallback(dwDevice_t *dev) {
 
       break;
     }
+    case (LPS_TWR_REPORT+1):
+    {
+      lpsTwrTagReportPayload_t *report2 = (lpsTwrTagReportPayload_t *)(rxPacket.payload+2);
+      double tround1, treply1, treply2, tround2, tprop_ctn, tprop;
+
+      // if (curr_tag != (uint8_t)(rxPacket.sourceAddress & 0xFF) ) {
+      //   return;
+      // }
+
+      memcpy(&poll_tx, &report2->pollRx, 5);
+      memcpy(&answer_rx, &report2->answerTx, 5);
+      memcpy(&final_tx, &report2->finalRx, 5);
+
+      tround1 = answer_rx.low32 - poll_tx.low32;
+      treply1 = answer_tx.low32 - poll_rx.low32;
+      tround2 = final_rx.low32 - answer_tx.low32;
+      treply2 = final_tx.low32 - answer_rx.low32;
+
+      tprop_ctn = ((tround1*tround2) - (treply1*treply2)) / (tround1 + tround2 + treply1 + treply2);
+
+      tprop = tprop_ctn / LOCODECK_TS_FREQ;
+      state.distance[0] = SPEED_OF_LIGHT * tprop;//////curr_tag=8
+      state.pressures[0] = report2->asl;
+
+      // Outliers rejection
+      rangingStats[0].ptr = (rangingStats[0].ptr + 1) % RANGING_HISTORY_LENGTH;
+      float32_t mean;
+      float32_t stddev;
+
+      arm_std_f32(rangingStats[0].history, RANGING_HISTORY_LENGTH, &stddev);
+      arm_mean_f32(rangingStats[0].history, RANGING_HISTORY_LENGTH, &mean);
+      float32_t diff = fabsf(mean - state.distance[0]);
+
+      rangingStats[0].history[rangingStats[0].ptr] = state.distance[0];
+
+      rangingOk = true;
+
+      if ((options->combinedAnchorPositionOk || options->anchorPosition[curr_tag].timestamp) &&
+          (diff < (OUTLIER_TH*stddev))) {
+        distanceMeasurement_t dist;
+        dist.distance = state.distance[curr_tag];
+        dist.x = options->anchorPosition[curr_tag].x;
+        dist.y = options->anchorPosition[curr_tag].y;
+        dist.z = options->anchorPosition[curr_tag].z;
+        dist.stdDev = 0.25;
+        estimatorEnqueueDistance(&dist);
+      }
+      
+      dwNewReceive(dev);
+      dwSetDefaults(dev);
+      dwStartReceive(dev);
+      break;
+    }    
   }
 }
 
@@ -613,53 +666,53 @@ uwbAlgorithm_t uwbTwrTagAlgorithm = {
 // LOG_ADD(LOG_UINT8, rangingPerSec5, &rangingPerSec[5])
 // LOG_GROUP_STOP(twr)
 
-// LOG_GROUP_START(ranging)
-// #if (LOCODECK_NR_OF_TWR_ANCHORS > 0)
-// LOG_ADD(LOG_FLOAT, distance0, &state.distance[0])
-// #endif
-// #if (LOCODECK_NR_OF_TWR_ANCHORS > 1)
-// LOG_ADD(LOG_FLOAT, distance1, &state.distance[1])
-// #endif
-// #if (LOCODECK_NR_OF_TWR_ANCHORS > 2)
-// LOG_ADD(LOG_FLOAT, distance2, &state.distance[2])
-// #endif
-// #if (LOCODECK_NR_OF_TWR_ANCHORS > 3)
-// LOG_ADD(LOG_FLOAT, distance3, &state.distance[3])
-// #endif
-// #if (LOCODECK_NR_OF_TWR_ANCHORS > 4)
-// LOG_ADD(LOG_FLOAT, distance4, &state.distance[4])
-// #endif
-// #if (LOCODECK_NR_OF_TWR_ANCHORS > 5)
-// LOG_ADD(LOG_FLOAT, distance5, &state.distance[5])
-// #endif
-// #if (LOCODECK_NR_OF_TWR_ANCHORS > 6)
-// LOG_ADD(LOG_FLOAT, distance6, &state.distance[6])
-// #endif
-// #if (LOCODECK_NR_OF_TWR_ANCHORS > 7)
-// LOG_ADD(LOG_FLOAT, distance7, &state.distance[7])
-// #endif
-// #if (LOCODECK_NR_OF_TWR_ANCHORS > 0)
-// LOG_ADD(LOG_FLOAT, pressure0, &state.pressures[0])
-// #endif
-// #if (LOCODECK_NR_OF_TWR_ANCHORS > 1)
-// LOG_ADD(LOG_FLOAT, pressure1, &state.pressures[1])
-// #endif
-// #if (LOCODECK_NR_OF_TWR_ANCHORS > 2)
-// LOG_ADD(LOG_FLOAT, pressure2, &state.pressures[2])
-// #endif
-// #if (LOCODECK_NR_OF_TWR_ANCHORS > 3)
-// LOG_ADD(LOG_FLOAT, pressure3, &state.pressures[3])
-// #endif
-// #if (LOCODECK_NR_OF_TWR_ANCHORS > 4)
-// LOG_ADD(LOG_FLOAT, pressure4, &state.pressures[4])
-// #endif
-// #if (LOCODECK_NR_OF_TWR_ANCHORS > 5)
-// LOG_ADD(LOG_FLOAT, pressure5, &state.pressures[5])
-// #endif
-// #if (LOCODECK_NR_OF_TWR_ANCHORS > 6)
-// LOG_ADD(LOG_FLOAT, pressure6, &state.pressures[6])
-// #endif
-// #if (LOCODECK_NR_OF_TWR_ANCHORS > 7)
-// LOG_ADD(LOG_FLOAT, pressure7, &state.pressures[7])
-// #endif
-// LOG_GROUP_STOP(ranging)
+LOG_GROUP_START(ranging)
+#if (LOCODECK_NR_OF_TWR_ANCHORS > 0)
+LOG_ADD(LOG_FLOAT, distance0, &state.distance[0])
+#endif
+#if (LOCODECK_NR_OF_TWR_ANCHORS > 1)
+LOG_ADD(LOG_FLOAT, distance1, &state.distance[1])
+#endif
+#if (LOCODECK_NR_OF_TWR_ANCHORS > 2)
+LOG_ADD(LOG_FLOAT, distance2, &state.distance[2])
+#endif
+#if (LOCODECK_NR_OF_TWR_ANCHORS > 3)
+LOG_ADD(LOG_FLOAT, distance3, &state.distance[3])
+#endif
+#if (LOCODECK_NR_OF_TWR_ANCHORS > 4)
+LOG_ADD(LOG_FLOAT, distance4, &state.distance[4])
+#endif
+#if (LOCODECK_NR_OF_TWR_ANCHORS > 5)
+LOG_ADD(LOG_FLOAT, distance5, &state.distance[5])
+#endif
+#if (LOCODECK_NR_OF_TWR_ANCHORS > 6)
+LOG_ADD(LOG_FLOAT, distance6, &state.distance[6])
+#endif
+#if (LOCODECK_NR_OF_TWR_ANCHORS > 7)
+LOG_ADD(LOG_FLOAT, distance7, &state.distance[7])
+#endif
+#if (LOCODECK_NR_OF_TWR_ANCHORS > 0)
+LOG_ADD(LOG_FLOAT, pressure0, &state.pressures[0])
+#endif
+#if (LOCODECK_NR_OF_TWR_ANCHORS > 1)
+LOG_ADD(LOG_FLOAT, pressure1, &state.pressures[1])
+#endif
+#if (LOCODECK_NR_OF_TWR_ANCHORS > 2)
+LOG_ADD(LOG_FLOAT, pressure2, &state.pressures[2])
+#endif
+#if (LOCODECK_NR_OF_TWR_ANCHORS > 3)
+LOG_ADD(LOG_FLOAT, pressure3, &state.pressures[3])
+#endif
+#if (LOCODECK_NR_OF_TWR_ANCHORS > 4)
+LOG_ADD(LOG_FLOAT, pressure4, &state.pressures[4])
+#endif
+#if (LOCODECK_NR_OF_TWR_ANCHORS > 5)
+LOG_ADD(LOG_FLOAT, pressure5, &state.pressures[5])
+#endif
+#if (LOCODECK_NR_OF_TWR_ANCHORS > 6)
+LOG_ADD(LOG_FLOAT, pressure6, &state.pressures[6])
+#endif
+#if (LOCODECK_NR_OF_TWR_ANCHORS > 7)
+LOG_ADD(LOG_FLOAT, pressure7, &state.pressures[7])
+#endif
+LOG_GROUP_STOP(ranging)
