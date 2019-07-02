@@ -90,8 +90,11 @@ static lpsTwrAlgoOptions_t defaultOptions = {
 
 typedef struct {
   float distance[LOCODECK_NR_OF_TWR_ANCHORS];
-  float pressures[LOCODECK_NR_OF_TWR_ANCHORS];
-  int failedRanging[LOCODECK_NR_OF_TWR_ANCHORS];
+  float Ax[LOCODECK_NR_OF_TWR_ANCHORS];
+  float Ay[LOCODECK_NR_OF_TWR_ANCHORS];
+  float Vx[LOCODECK_NR_OF_TWR_ANCHORS];
+  float Vy[LOCODECK_NR_OF_TWR_ANCHORS];
+  float Gz[LOCODECK_NR_OF_TWR_ANCHORS]; 
 } twrState_t;
 
 static twrState_t state;
@@ -135,6 +138,7 @@ static volatile uint8_t curr_tag = 0;
 // static dwTime_t frameStart;
 
 static bool rangingOk;
+static bool readingOk;
 
 // static void lpsHandleLppShortPacket(const uint8_t srcId, const uint8_t *data);
 
@@ -243,10 +247,10 @@ static void rxcallback(dwDevice_t *dev) {
         memcpy(&report->pollRx, &poll_rx, 5);
         memcpy(&report->answerTx, &answer_tx, 5);
         memcpy(&report->finalRx, &final_rx, 5);
-        report->pressure = 0;
-        report->temperature = 0;
-        report->asl = 0;
-        report->pressure_ok = 1;
+        // report->pressure = 0;
+        // report->temperature = 0;
+        // report->asl = 0;
+        // report->pressure_ok = 1;
 
         dwNewTransmit(dev);
         dwSetDefaults(dev);
@@ -341,7 +345,13 @@ static void rxcallback(dwDevice_t *dev) {
 
       tprop = tprop_ctn / LOCODECK_TS_FREQ;
       state.distance[0] = SPEED_OF_LIGHT * tprop;//////curr_tag=8
-      state.pressures[0] = report2->asl;
+      // state.pressures[0] = report2->asl;
+      state.Ax[0] = report2->ownAx;
+      state.Ay[0] = report2->ownAy;
+      state.Vx[0] = report2->ownVx;
+      state.Vy[0] = report2->ownVy;
+      state.Gz[0] = report2->ownGz;
+      readingOk = true;
 
       // Outliers rejection
       rangingStats[0].ptr = (rangingStats[0].ptr + 1) % RANGING_HISTORY_LENGTH;
@@ -373,6 +383,24 @@ static void rxcallback(dwDevice_t *dev) {
       break;
     }    
   }
+}
+
+bool get_relative_info(float* range, float* ax, float* ay, float* vx, float* vy, float* gyroZ)
+{
+  *range = state.distance[0];
+  *ax = state.Ax[0];
+  *ay = state.Ay[0];
+  *vx = state.Vx[0];
+  *vy = state.Vy[0];
+  *gyroZ = state.Gz[0];
+  if(readingOk==true)
+  {
+    readingOk = false;
+    return(true);
+  }else
+  {
+    return(false);
+  } 
 }
 
 /* Adjust time for schedule transfer by DW1000 radio. Set 9 LSB to 0 */
@@ -669,6 +697,11 @@ uwbAlgorithm_t uwbTwrTagAlgorithm = {
 LOG_GROUP_START(ranging)
 #if (LOCODECK_NR_OF_TWR_ANCHORS > 0)
 LOG_ADD(LOG_FLOAT, distance0, &state.distance[0])
+LOG_ADD(LOG_FLOAT, Ax0, &state.Ax[0])
+LOG_ADD(LOG_FLOAT, Ay0, &state.Ay[0])
+LOG_ADD(LOG_FLOAT, Vx0, &state.Vx[0])
+LOG_ADD(LOG_FLOAT, Vy0, &state.Vy[0])
+LOG_ADD(LOG_FLOAT, Gz0, &state.Gz[0])
 #endif
 #if (LOCODECK_NR_OF_TWR_ANCHORS > 1)
 LOG_ADD(LOG_FLOAT, distance1, &state.distance[1])
@@ -690,29 +723,5 @@ LOG_ADD(LOG_FLOAT, distance6, &state.distance[6])
 #endif
 #if (LOCODECK_NR_OF_TWR_ANCHORS > 7)
 LOG_ADD(LOG_FLOAT, distance7, &state.distance[7])
-#endif
-#if (LOCODECK_NR_OF_TWR_ANCHORS > 0)
-LOG_ADD(LOG_FLOAT, pressure0, &state.pressures[0])
-#endif
-#if (LOCODECK_NR_OF_TWR_ANCHORS > 1)
-LOG_ADD(LOG_FLOAT, pressure1, &state.pressures[1])
-#endif
-#if (LOCODECK_NR_OF_TWR_ANCHORS > 2)
-LOG_ADD(LOG_FLOAT, pressure2, &state.pressures[2])
-#endif
-#if (LOCODECK_NR_OF_TWR_ANCHORS > 3)
-LOG_ADD(LOG_FLOAT, pressure3, &state.pressures[3])
-#endif
-#if (LOCODECK_NR_OF_TWR_ANCHORS > 4)
-LOG_ADD(LOG_FLOAT, pressure4, &state.pressures[4])
-#endif
-#if (LOCODECK_NR_OF_TWR_ANCHORS > 5)
-LOG_ADD(LOG_FLOAT, pressure5, &state.pressures[5])
-#endif
-#if (LOCODECK_NR_OF_TWR_ANCHORS > 6)
-LOG_ADD(LOG_FLOAT, pressure6, &state.pressures[6])
-#endif
-#if (LOCODECK_NR_OF_TWR_ANCHORS > 7)
-LOG_ADD(LOG_FLOAT, pressure7, &state.pressures[7])
 #endif
 LOG_GROUP_STOP(ranging)

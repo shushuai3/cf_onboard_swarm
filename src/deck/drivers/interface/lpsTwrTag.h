@@ -35,10 +35,11 @@ typedef struct {
   uint8_t answerTx[5];
   uint8_t finalRx[5];
 
-  float pressure;
-  float temperature;
-  float asl;
-  uint8_t pressure_ok;
+  float ownAx;
+  float ownAy;
+  float ownVx;
+  float ownVy;
+  float ownGz;
 } __attribute__((packed)) lpsTwrTagReportPayload_t;
 
 typedef struct {
@@ -63,6 +64,8 @@ typedef struct {
 struct lppShortAnchorPosition_s {
   float position[3];
 } __attribute__((packed));
+
+bool get_relative_info(float* range, float* ax, float* ay, float* vx, float* vy, float* gyroZ);
 
 #define TWR_RECEIVE_TIMEOUT 1000
 

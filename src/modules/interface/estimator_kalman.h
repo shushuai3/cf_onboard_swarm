@@ -79,5 +79,6 @@ float estimatorKalmanGetElevation();
 void estimatorKalmanSetShift(float deltax, float deltay);
 
 void estimatorKalmanGetEstimatedPos(point_t* pos);
+void estimatorKalmanGetSwarmInfo(float* ax, float* ay, float* vx, float* vy, float* gyroZ);
 
 #endif // __ESTIMATOR_KALMAN_H__
