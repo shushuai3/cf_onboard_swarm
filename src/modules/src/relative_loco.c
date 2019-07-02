@@ -20,12 +20,12 @@
 
 static bool isInit;
 
-// static float procNoiseAcc_xy = 0.5f;
-// static float procNoiseAcc_z = 1.0f;
-// static float procNoiseVel = 0;
-// static float procNoisePos = 0;
-// static float procNoiseAtt = 0;
-// static float measNoiseBaro = 2.0f; // meters
+static float procNoiseFlow_xy = 0.1f;
+static float InitCovarianceX = 0.1f;
+static float InitCovarianceY = 0.3f;
+static float measNoiseDist = 0.2f;
+
+static bool read_loco_ok = false;
 
 typedef enum
 {
@@ -97,8 +97,8 @@ void relativeLocoTask(void* arg)
     }
   }
   // initialize state variances
-  P[0][0]  = powf(0.1, 2);
-  P[1][1]  = powf(0.3, 2);
+  P[0][0]  = powf(InitCovarianceX, 2);
+  P[1][1]  = powf(InitCovarianceY, 2);
 
   lastPrediction = xTaskGetTickCount();
 
@@ -124,8 +124,8 @@ void relativeLocoTask(void* arg)
         float dPsi = ano_gz - own_gz;
         S[STATE_rlX] += dt*(cosf(dPsi)*ano_vx - sinf(dPsi)*ano_vy - own_vx);
         S[STATE_rlY] += dt*(sinf(dPsi)*ano_vx + cosf(dPsi)*ano_vy - own_vy);
-        P[0][0] += powf(0.1, 2);  // add process noise on position
-        P[1][1] += powf(0.1, 2);  // add process noise on position
+        P[0][0] += powf(procNoiseFlow_xy, 2);  // add process noise on position
+        P[1][1] += powf(procNoiseFlow_xy, 2);  // add process noise on position
         float measDist = ano_dis;
         float predDist = arm_sqrt(powf(S[STATE_rlX], 2) + powf(S[STATE_rlY], 2));
         if(predDist!=0.0f)
@@ -139,8 +139,7 @@ void relativeLocoTask(void* arg)
         }
         mat_trans(&H, &HTm);
         mat_mult(&Pm, &HTm, &PHTm); // PH'
-        float R = 0.04f;
-        float HPHR = R; // HPH' + R
+        float HPHR = powf(measNoiseDist, 2);// HPH' + R
         for (int i=0; i<STATE_DIM_rl; i++) { // Add the element of HPH' to the above
           HPHR += H.pData[i]*PHTd[i]; // this obviously only works if the update is scalar (as in this function)
         }
@@ -154,8 +153,23 @@ void relativeLocoTask(void* arg)
         mat_mult(&tmpNN1m, &Pm, &tmpNN3m); // (KH - I)*P
         mat_mult(&tmpNN3m, &tmpNN2m, &Pm); // (KH - I)*P*(KH - I)'
         lastPrediction = osTick;
+        read_loco_ok = true;
       }
     }
+  }
+}
+
+bool read_rl_loco(float* rlx, float* rly)
+{
+  if(read_loco_ok==true)
+  {
+    *rlx = S[STATE_rlX];
+    *rly = S[STATE_rlY];
+    read_loco_ok = false;
+    return(true);
+  }else
+  {
+    return(false);
   }
 }
 
@@ -173,8 +187,9 @@ LOG_ADD(LOG_FLOAT, own_vy, &own_vy)
 LOG_ADD(LOG_FLOAT, own_gz, &own_gz)
 LOG_GROUP_STOP(relative_pos)
 
-// PARAM_GROUP_START(rssiCR)
-// PARAM_ADD(PARAM_UINT8, start, &start_loc)
-// PARAM_ADD(PARAM_FLOAT, gamma_rrsi, &gamma_rrsi)
-// PARAM_ADD(PARAM_FLOAT, Pn, &Pn)
-// PARAM_GROUP_STOP(rssiCR)
+PARAM_GROUP_START(relative_pos)
+PARAM_ADD(PARAM_FLOAT, NoiseFlow, &procNoiseFlow_xy) // make sure the name if not too long
+PARAM_ADD(PARAM_FLOAT, initCovX, &InitCovarianceX)
+PARAM_ADD(PARAM_FLOAT, initCovY, &InitCovarianceY)
+PARAM_ADD(PARAM_FLOAT, NoiseDist, &measNoiseDist)
+PARAM_GROUP_STOP(relative_pos)

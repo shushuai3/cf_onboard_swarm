@@ -5,7 +5,7 @@ Shushuai li
 
 #ifndef RELATIVELOCO_H_
 #define RELATIVELOCO_H_
-
+#include "system.h"
 // #define EKF_N 4
 // #define EKF_M 3
 // typedef struct discrete_ekf {
@@ -40,6 +40,7 @@ Shushuai li
 // } ekf;
 void relativeLocoInit(void);
 void relativeLocoTask(void* arg);
+bool read_rl_loco(float* rlx, float* rly);
 // void discrete_ekf_new(ekf* filter);
 // void discrete_ekf_predict(ekf* filter);
 // void discrete_ekf_update(ekf* filter, float *Z);
