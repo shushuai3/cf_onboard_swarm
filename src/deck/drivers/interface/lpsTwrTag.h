@@ -35,10 +35,11 @@ typedef struct {
   uint8_t answerTx[5];
   uint8_t finalRx[5];
 
-  float pressure;
-  float temperature;
-  float asl;
-  uint8_t pressure_ok;
+  float ownAx;
+  float ownAy;
+  float ownVx;
+  float ownVy;
+  float ownGz;
 } __attribute__((packed)) lpsTwrTagReportPayload_t;
 
 typedef struct {

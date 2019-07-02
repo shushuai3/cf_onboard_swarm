@@ -199,6 +199,7 @@ static inline bool stateEstimatorHasHeightPacket(heightMeasurement_t *height) {
 #define IN_FLIGHT_TIME_THRESHOLD (500)
 
 // the reversion of pitch and roll to zero
+#define LPS_2D_POSITION_HEIGHT
 #ifdef LPS_2D_POSITION_HEIGHT
 #define ROLLPITCH_ZERO_REVERSION (0.0f)
 #else
@@ -268,6 +269,7 @@ static float R[3][3] = {{1,0,0},{0,1,0},{0,0,1}};
 // The covariance matrix
 static float P[STATE_DIM][STATE_DIM];
 static arm_matrix_instance_f32 Pm = {STATE_DIM, STATE_DIM, (float *)P};
+static float swaAx,swaAy,swaAz,swaGx,swaGz;
 
 
 /**
@@ -417,6 +419,12 @@ void estimatorKalman(state_t *state, sensorData_t *sensors, control_t *control, 
     accAccumulator.x /= accAccumulatorCount;
     accAccumulator.y /= accAccumulatorCount;
     accAccumulator.z /= accAccumulatorCount;
+
+    swaAx = accAccumulator.x;
+    swaAy = accAccumulator.y;
+    swaAz = accAccumulator.z;
+    swaGx = gyroAccumulator.x;
+    swaGz = gyroAccumulator.z;
 
     thrustAccumulator /= thrustAccumulatorCount;
 
@@ -1493,6 +1501,17 @@ void estimatorKalmanGetEstimatedPos(point_t* pos) {
   pos->x = S[STATE_X];
   pos->y = S[STATE_Y];
   pos->z = S[STATE_Z];
+}
+
+void estimatorKalmanGetSwarmInfo(float* ax, float* ay, float* vx, float* vy, float* gyroZ) {
+  *ax = R[0][0] * swaAx + R[0][1] * swaAy + R[0][2] * swaAz;
+  *ay = R[1][0] * swaAx + R[1][1] * swaAy + R[1][2] * swaAz;
+  *vx = R[0][0] * S[STATE_PX] + R[0][1] * S[STATE_PY] + R[0][2] * S[STATE_PZ];
+  *vy = R[1][0] * S[STATE_PX] + R[1][1] * S[STATE_PY] + R[1][2] * S[STATE_PZ];
+  // float pitch = asinf(-2*(q[1]*q[3] - q[0]*q[2]));
+  // float roll = atan2f(2*(q[2]*q[3]+q[0]*q[1]) , q[0]*q[0] - q[1]*q[1] - q[2]*q[2] + q[3]*q[3]);
+  // *gyroZ = -sinf(pitch)/cosf(roll) * swaGx + cosf(pitch)/cosf(roll) * swaGz;
+  *gyroZ = atan2f(2*(q[1]*q[2]+q[0]*q[3]) , q[0]*q[0] + q[1]*q[1] - q[2]*q[2] - q[3]*q[3]);
 }
 
 // Temporary development groups

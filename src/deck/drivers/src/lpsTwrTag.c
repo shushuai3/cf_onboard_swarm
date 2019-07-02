@@ -44,6 +44,7 @@
 #include "physicalConstants.h"
 #include "configblock.h"
 #include "lpsTdma.h"
+#include "estimator_kalman.h"
 
 #define ANTENNA_OFFSET 154.6   // In meter
 
@@ -245,7 +246,7 @@ static uint32_t rxcallback(dwDevice_t *dev) {
 
       tprop = tprop_ctn / LOCODECK_TS_FREQ;
       state.distance[current_anchor] = SPEED_OF_LIGHT * tprop;
-      state.pressures[current_anchor] = report->asl;
+      // state.pressures[current_anchor] = report->asl;
 
       // Outliers rejection
       rangingStats[current_anchor].ptr = (rangingStats[current_anchor].ptr + 1) % RANGING_HISTORY_LENGTH;
@@ -287,6 +288,7 @@ static uint32_t rxcallback(dwDevice_t *dev) {
       memcpy(&report2->pollRx, &poll_tx, 5);
       memcpy(&report2->answerTx, &answer_rx, 5);
       memcpy(&report2->finalRx, &final_tx, 5);
+      estimatorKalmanGetSwarmInfo(&report2->ownAx,&report2->ownAy,&report2->ownVx,&report2->ownVy,&report2->ownGz);
       dwNewTransmit(dev);
       dwSetDefaults(dev);
       dwSetData(dev, (uint8_t*)&txPacket, MAC802154_HEADER_LENGTH+2+sizeof(lpsTwrTagReportPayload_t));
