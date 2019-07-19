@@ -197,6 +197,7 @@ static void uwbTask(void* parameters)
   systemWaitStart();
 
   while(1) {
+    if(taskDelayForTransMode == true) vTaskDelay(M2T(3)); else vTaskDelay(M2T(0));
     // Change and init algorithm uppon request
     // The first time this loop enters, currentRangingMode is set to auto which forces
     // the initialization of the set algorithm
