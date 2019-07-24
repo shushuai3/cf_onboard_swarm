@@ -12,12 +12,7 @@
 
 #define LPS_TWR_TYPE  0
 #define LPS_TWR_SEQ   1
-
-#ifdef LOCODECK_NR_OF_ANCHORS
-#define LOCODECK_NR_OF_TWR_ANCHORS LOCODECK_NR_OF_ANCHORS
-#else
-#define LOCODECK_NR_OF_TWR_ANCHORS 1
-#endif
+#define LPS_TWR_ENABLE
 
 extern bool taskDelayForTransMode;
 extern uwbAlgorithm_t uwbTwrTagAlgorithm;
@@ -26,16 +21,6 @@ typedef struct {
   uint8_t pollRx[5];
   uint8_t answerTx[5];
   uint8_t finalRx[5];
-
-  float ownAx;
-  float ownAy;
-  float ownVx;
-  float ownVy;
-  float ownGz;
 } __attribute__((packed)) lpsTwrTagReportPayload_t;
-
-// float lpsTwrTagGetDistance(const uint8_t anchorId);
-
-#define TWR_RECEIVE_TIMEOUT 1000
 
 #endif // __LPS_TWR_TAG_H__

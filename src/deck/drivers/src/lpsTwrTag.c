@@ -2,17 +2,20 @@
 #include "lpsTwrTag.h"
 #include "log.h"
 #include "physicalConstants.h"
+#include "FreeRTOS.h"
+#include "task.h"
 
 #define ANTENNA_OFFSET 154.6   // In meter
 #define basicAddr 0xbccf000000000000
 #define NumUWB 2
-#define selfID 8
+#define selfID 1
 
 static locoAddress_t selfAddress = basicAddr + selfID;
 static const uint64_t antennaDelay = (ANTENNA_OFFSET*499.2e6*128)/299792458.0; // In radio tick
 
 typedef struct {
-  float distance[LOCODECK_NR_OF_TWR_ANCHORS];
+  float distance[NumUWB-1];
+  int16_t rangeNumPerSec[NumUWB-1];
 } twrState_t;
 static twrState_t state;
 
@@ -28,6 +31,10 @@ bool taskDelayForTransMode;
 static packet_t txPacket;
 static bool rangingOk;
 static uint8_t succededRanging, tdmaSynchronized; //dont know why
+
+// Communication logic between each UWB
+static bool current_mode_trans;
+static uint8_t current_receiveID;
 
 static void txcallback(dwDevice_t *dev)
 {
@@ -47,10 +54,13 @@ static void txcallback(dwDevice_t *dev)
       break;
     case LPS_TWR_REPORT:
       break;
+    case LPS_TWR_REPORT+1:
+      break;
   }
 }
 
-
+static uint32_t range_tick = 0;
+static int16_t  range_count= 0;
 static void rxcallback(dwDevice_t *dev) {
   dwTime_t arival = { .full=0 };
   int dataLength = dwGetDataLength(dev);
@@ -98,6 +108,14 @@ static void rxcallback(dwDevice_t *dev) {
       state.distance[0] = SPEED_OF_LIGHT * tprop;
       rangingOk = true;
 
+      range_count++;
+      if(xTaskGetTickCount()>range_tick+1000)
+      {
+        range_tick = xTaskGetTickCount();
+        state.rangeNumPerSec[0] = range_count;
+        range_count = 0;  
+      }
+
       lpsTwrTagReportPayload_t *report2 = (lpsTwrTagReportPayload_t *)(txPacket.payload+2);
       txPacket.payload[LPS_TWR_TYPE] = LPS_TWR_REPORT+1;
       txPacket.payload[LPS_TWR_SEQ] = rxPacket.payload[LPS_TWR_SEQ];
@@ -107,7 +125,7 @@ static void rxcallback(dwDevice_t *dev) {
       dwNewTransmit(dev);
       dwSetData(dev, (uint8_t*)&txPacket, MAC802154_HEADER_LENGTH+2+sizeof(lpsTwrTagReportPayload_t));
       dwWaitForResponse(dev, true);
-      dwStartTransmit(dev);   
+      dwStartTransmit(dev);  
       break;
     }
     case LPS_TWR_POLL:
@@ -125,21 +143,20 @@ static void rxcallback(dwDevice_t *dev) {
     }
     case LPS_TWR_FINAL:
     {
-        lpsTwrTagReportPayload_t *report = (lpsTwrTagReportPayload_t *)(txPacket.payload+2);
-        dwGetReceiveTimestamp(dev, &arival);
-        arival.full -= (antennaDelay / 2);
-        final_rx = arival;
-        txPacket.payload[LPS_TWR_TYPE] = LPS_TWR_REPORT;
-        txPacket.payload[LPS_TWR_SEQ] = rxPacket.payload[LPS_TWR_SEQ];
-        memcpy(&report->pollRx, &poll_rx, 5);
-        memcpy(&report->answerTx, &answer_tx, 5);
-        memcpy(&report->finalRx, &final_rx, 5);
-        dwNewTransmit(dev);
-        dwSetData(dev, (uint8_t*)&txPacket, MAC802154_HEADER_LENGTH+2+sizeof(lpsTwrTagReportPayload_t));
-        dwWaitForResponse(dev, true);
-        dwStartTransmit(dev);
-        rangingOk = true;
-        break;
+      lpsTwrTagReportPayload_t *report = (lpsTwrTagReportPayload_t *)(txPacket.payload+2);
+      dwGetReceiveTimestamp(dev, &arival);
+      arival.full -= (antennaDelay / 2);
+      final_rx = arival;
+      txPacket.payload[LPS_TWR_TYPE] = LPS_TWR_REPORT;
+      txPacket.payload[LPS_TWR_SEQ] = rxPacket.payload[LPS_TWR_SEQ];
+      memcpy(&report->pollRx, &poll_rx, 5);
+      memcpy(&report->answerTx, &answer_tx, 5);
+      memcpy(&report->finalRx, &final_rx, 5);
+      dwNewTransmit(dev);
+      dwSetData(dev, (uint8_t*)&txPacket, MAC802154_HEADER_LENGTH+2+sizeof(lpsTwrTagReportPayload_t));
+      dwWaitForResponse(dev, true);
+      dwStartTransmit(dev);
+      break;
     }
     case (LPS_TWR_REPORT+1):
     {
@@ -155,6 +172,14 @@ static void rxcallback(dwDevice_t *dev) {
       tprop_ctn = ((tround1*tround2) - (treply1*treply2)) / (tround1 + tround2 + treply1 + treply2);
       tprop = tprop_ctn / LOCODECK_TS_FREQ;
       state.distance[0] = SPEED_OF_LIGHT * tprop;
+      rangingOk = true;
+      range_count++;
+      if(xTaskGetTickCount()>range_tick+1000)
+      {
+        range_tick = xTaskGetTickCount();
+        state.rangeNumPerSec[0] = range_count;
+        range_count = 0;  
+      }
       dwNewReceive(dev);
       dwSetDefaults(dev);
       dwStartReceive(dev);
@@ -175,25 +200,27 @@ static uint32_t twrTagOnEvent(dwDevice_t *dev, uwbEvent_t event)
     case eventTimeout:  // Comes back to timeout after each ranging attempt
     case eventReceiveTimeout:
     case eventReceiveFailed:
-      if (selfID==8)
+      if (current_mode_trans==true)
       {
         if (tdmaSynchronized==false) succededRanging++; 
         txPacket.payload[LPS_TWR_TYPE] = LPS_TWR_POLL;
         txPacket.payload[LPS_TWR_SEQ] = 0;
         txPacket.sourceAddress = selfAddress;
-        txPacket.destAddress = 0xbccf000000000000;
+        txPacket.destAddress = basicAddr + current_receiveID;
         dwNewTransmit(dev);
         dwSetDefaults(dev);
         dwSetData(dev, (uint8_t*)&txPacket, MAC802154_HEADER_LENGTH+2);
         dwWaitForResponse(dev, true);
         dwStartTransmit(dev);
         taskDelayForTransMode = true;
+        dwSetReceiveWaitTimeout(dev, 1000);
       }else
       {
         dwNewReceive(dev);
 	      dwSetDefaults(dev);
         dwStartReceive(dev);
         taskDelayForTransMode = false;
+        dwSetReceiveWaitTimeout(dev, 10000);
       }     
       break;
     default:
@@ -216,9 +243,20 @@ static void twrTagInit(dwDevice_t *dev)
   memset(&final_tx, 0, sizeof(final_tx));
   memset(&final_rx, 0, sizeof(final_rx));
 
+  // Communication logic between each UWB
+  if(selfID==0)
+  {
+    current_mode_trans = true;
+    current_receiveID = 1;
+    dwSetReceiveWaitTimeout(dev, 1000);
+  }
+  else
+  {
+    current_mode_trans = false;
+    dwSetReceiveWaitTimeout(dev, 10000);
+  }
+
   tdmaSynchronized = false;
-  dwSetReceiveWaitTimeout(dev, TWR_RECEIVE_TIMEOUT);
-  dwCommitConfiguration(dev);
   rangingOk = false;
 }
 
@@ -228,22 +266,22 @@ static bool isRangingOk()
 }
 
 static bool getAnchorPosition(const uint8_t anchorId, point_t* position) {
-  if (anchorId < LOCODECK_NR_OF_TWR_ANCHORS)
+  if (anchorId < NumUWB-1)
     return true;
   else
     return false;
 }
 
 static uint8_t getAnchorIdList(uint8_t unorderedAnchorList[], const int maxListSize) {
-  for (int i = 0; i < LOCODECK_NR_OF_TWR_ANCHORS; i++) {
+  for (int i = 0; i < NumUWB-1; i++) {
     unorderedAnchorList[i] = i;
   }
-  return LOCODECK_NR_OF_TWR_ANCHORS;
+  return NumUWB-1;
 }
 
 static uint8_t getActiveAnchorIdList(uint8_t unorderedAnchorList[], const int maxListSize) {
   uint8_t count = 0;
-  for (int i = 0; i < LOCODECK_NR_OF_TWR_ANCHORS; i++) {
+  for (int i = 0; i < NumUWB-1; i++) {
       unorderedAnchorList[count] = i;
       count++;
   }
@@ -261,4 +299,5 @@ uwbAlgorithm_t uwbTwrTagAlgorithm = {
 
 LOG_GROUP_START(ranging)
 LOG_ADD(LOG_FLOAT, distance0, &state.distance[0])
+LOG_ADD(LOG_INT16, rangeNum0, &state.rangeNumPerSec[0])
 LOG_GROUP_STOP(ranging)
