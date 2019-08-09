@@ -42,20 +42,25 @@ static void txcallback(dwDevice_t *dev)
   dwGetTransmitTimestamp(dev, &departure);
   departure.full += (antennaDelay / 2);
 
-  switch (txPacket.payload[0]) {
-    case LPS_TWR_POLL:
-      poll_tx = departure;
-      break;
-    case LPS_TWR_FINAL:
-      final_tx = departure;
-      break;
-    case LPS_TWR_ANSWER:
-      answer_tx = departure;
-      break;
-    case LPS_TWR_REPORT:
-      break;
-    case LPS_TWR_REPORT+1:
-      break;
+  if(current_mode_trans){
+    switch (txPacket.payload[0]) {
+      case LPS_TWR_POLL:
+        poll_tx = departure;
+        break;
+      case LPS_TWR_FINAL:
+        final_tx = departure;
+        break;
+      case LPS_TWR_REPORT+1:
+        break;
+    }
+  }else{
+    switch (txPacket.payload[0]) {
+      case LPS_TWR_ANSWER:
+        answer_tx = departure;
+        break;
+      case LPS_TWR_REPORT:
+        break;
+    }
   }
 }
 
@@ -78,112 +83,131 @@ static void rxcallback(dwDevice_t *dev) {
 
   txPacket.destAddress = rxPacket.sourceAddress;
   txPacket.sourceAddress = rxPacket.destAddress;
-  switch(rxPacket.payload[LPS_TWR_TYPE]) {
-    // Tag received messages
-    case LPS_TWR_ANSWER:
-      txPacket.payload[LPS_TWR_TYPE] = LPS_TWR_FINAL;
-      txPacket.payload[LPS_TWR_SEQ] = rxPacket.payload[LPS_TWR_SEQ];
-      dwGetReceiveTimestamp(dev, &arival);
-      arival.full -= (antennaDelay / 2);
-      answer_rx = arival;
-      dwNewTransmit(dev);
-      dwSetData(dev, (uint8_t*)&txPacket, MAC802154_HEADER_LENGTH+2);
-      dwWaitForResponse(dev, true);
-      dwStartTransmit(dev);
-      break;
 
-    case LPS_TWR_REPORT:
-    {
-      lpsTwrTagReportPayload_t *report = (lpsTwrTagReportPayload_t *)(rxPacket.payload+2);
-      double tround1, treply1, treply2, tround2, tprop_ctn, tprop;
-      memcpy(&poll_rx, &report->pollRx, 5);
-      memcpy(&answer_tx, &report->answerTx, 5);
-      memcpy(&final_rx, &report->finalRx, 5);
-      tround1 = answer_rx.low32 - poll_tx.low32;
-      treply1 = answer_tx.low32 - poll_rx.low32;
-      tround2 = final_rx.low32 - answer_tx.low32;
-      treply2 = final_tx.low32 - answer_rx.low32;
-      tprop_ctn = ((tround1*tround2) - (treply1*treply2)) / (tround1 + tround2 + treply1 + treply2);
-      tprop = tprop_ctn / LOCODECK_TS_FREQ;
-      state.distance[0] = SPEED_OF_LIGHT * tprop;
-      rangingOk = true;
-
-      range_count++;
-      if(xTaskGetTickCount()>range_tick+1000)
+  if(current_mode_trans){
+    switch(rxPacket.payload[LPS_TWR_TYPE]) {
+      case LPS_TWR_POLL:
       {
-        range_tick = xTaskGetTickCount();
-        state.rangeNumPerSec[0] = range_count;
-        range_count = 0;  
+        txPacket.payload[LPS_TWR_TYPE] = LPS_TWR_POLL;
+        txPacket.payload[LPS_TWR_SEQ] = 0;
+        txPacket.sourceAddress = selfAddress;
+        txPacket.destAddress = basicAddr + current_receiveID;
+        dwNewTransmit(dev);
+        dwSetDefaults(dev);
+        dwSetData(dev, (uint8_t*)&txPacket, MAC802154_HEADER_LENGTH+2);
+        dwWaitForResponse(dev, true);
+        dwStartTransmit(dev);
+        break;
       }
-
-      lpsTwrTagReportPayload_t *report2 = (lpsTwrTagReportPayload_t *)(txPacket.payload+2);
-      txPacket.payload[LPS_TWR_TYPE] = LPS_TWR_REPORT+1;
-      txPacket.payload[LPS_TWR_SEQ] = rxPacket.payload[LPS_TWR_SEQ];
-      memcpy(&report2->pollRx, &poll_tx, 5);
-      memcpy(&report2->answerTx, &answer_rx, 5);
-      memcpy(&report2->finalRx, &final_tx, 5);
-      dwNewTransmit(dev);
-      dwSetData(dev, (uint8_t*)&txPacket, MAC802154_HEADER_LENGTH+2+sizeof(lpsTwrTagReportPayload_t));
-      dwWaitForResponse(dev, true);
-      dwStartTransmit(dev);  
-      break;
-    }
-    case LPS_TWR_POLL:
-    {
-      txPacket.payload[LPS_TWR_TYPE] = LPS_TWR_ANSWER;
-      txPacket.payload[LPS_TWR_SEQ] = rxPacket.payload[LPS_TWR_SEQ];
-      dwGetReceiveTimestamp(dev, &arival);
-      arival.full -= (antennaDelay / 2);
-      poll_rx = arival;
-      dwNewTransmit(dev);
-      dwSetData(dev, (uint8_t*)&txPacket, MAC802154_HEADER_LENGTH+2);
-      dwWaitForResponse(dev, true);
-      dwStartTransmit(dev);
-      break;
-    }
-    case LPS_TWR_FINAL:
-    {
-      lpsTwrTagReportPayload_t *report = (lpsTwrTagReportPayload_t *)(txPacket.payload+2);
-      dwGetReceiveTimestamp(dev, &arival);
-      arival.full -= (antennaDelay / 2);
-      final_rx = arival;
-      txPacket.payload[LPS_TWR_TYPE] = LPS_TWR_REPORT;
-      txPacket.payload[LPS_TWR_SEQ] = rxPacket.payload[LPS_TWR_SEQ];
-      memcpy(&report->pollRx, &poll_rx, 5);
-      memcpy(&report->answerTx, &answer_tx, 5);
-      memcpy(&report->finalRx, &final_rx, 5);
-      dwNewTransmit(dev);
-      dwSetData(dev, (uint8_t*)&txPacket, MAC802154_HEADER_LENGTH+2+sizeof(lpsTwrTagReportPayload_t));
-      dwWaitForResponse(dev, true);
-      dwStartTransmit(dev);
-      break;
-    }
-    case (LPS_TWR_REPORT+1):
-    {
-      lpsTwrTagReportPayload_t *report2 = (lpsTwrTagReportPayload_t *)(rxPacket.payload+2);
-      double tround1, treply1, treply2, tround2, tprop_ctn, tprop;
-      memcpy(&poll_tx, &report2->pollRx, 5);
-      memcpy(&answer_rx, &report2->answerTx, 5);
-      memcpy(&final_tx, &report2->finalRx, 5);
-      tround1 = answer_rx.low32 - poll_tx.low32;
-      treply1 = answer_tx.low32 - poll_rx.low32;
-      tround2 = final_rx.low32 - answer_tx.low32;
-      treply2 = final_tx.low32 - answer_rx.low32;
-      tprop_ctn = ((tround1*tround2) - (treply1*treply2)) / (tround1 + tround2 + treply1 + treply2);
-      tprop = tprop_ctn / LOCODECK_TS_FREQ;
-      state.distance[0] = SPEED_OF_LIGHT * tprop;
-      rangingOk = true;
-      range_count++;
-      if(xTaskGetTickCount()>range_tick+1000)
+      case LPS_TWR_ANSWER:
       {
-        range_tick = xTaskGetTickCount();
-        state.rangeNumPerSec[0] = range_count;
-        range_count = 0;  
+        txPacket.payload[LPS_TWR_TYPE] = LPS_TWR_FINAL;
+        txPacket.payload[LPS_TWR_SEQ] = rxPacket.payload[LPS_TWR_SEQ];
+        dwGetReceiveTimestamp(dev, &arival);
+        arival.full -= (antennaDelay / 2);
+        answer_rx = arival;
+        dwNewTransmit(dev);
+        dwSetData(dev, (uint8_t*)&txPacket, MAC802154_HEADER_LENGTH+2);
+        dwWaitForResponse(dev, true);
+        dwStartTransmit(dev);
+        break;
       }
-      dwNewReceive(dev);
-      dwSetDefaults(dev);
-      dwStartReceive(dev);
-      break;
+      case LPS_TWR_REPORT:
+      {
+        lpsTwrTagReportPayload_t *report = (lpsTwrTagReportPayload_t *)(rxPacket.payload+2);
+        double tround1, treply1, treply2, tround2, tprop_ctn, tprop;
+        memcpy(&poll_rx, &report->pollRx, 5);
+        memcpy(&answer_tx, &report->answerTx, 5);
+        memcpy(&final_rx, &report->finalRx, 5);
+        tround1 = answer_rx.low32 - poll_tx.low32;
+        treply1 = answer_tx.low32 - poll_rx.low32;
+        tround2 = final_rx.low32 - answer_tx.low32;
+        treply2 = final_tx.low32 - answer_rx.low32;
+        tprop_ctn = ((tround1*tround2) - (treply1*treply2)) / (tround1 + tround2 + treply1 + treply2);
+        tprop = tprop_ctn / LOCODECK_TS_FREQ;
+        state.distance[0] = SPEED_OF_LIGHT * tprop;
+        rangingOk = true;
+
+        range_count++;
+        if(xTaskGetTickCount()>range_tick+1000)
+        {
+          range_tick = xTaskGetTickCount();
+          state.rangeNumPerSec[0] = range_count;
+          range_count = 0;  
+        }
+
+        lpsTwrTagReportPayload_t *report2 = (lpsTwrTagReportPayload_t *)(txPacket.payload+2);
+        txPacket.payload[LPS_TWR_TYPE] = LPS_TWR_REPORT+1;
+        txPacket.payload[LPS_TWR_SEQ] = rxPacket.payload[LPS_TWR_SEQ];
+        memcpy(&report2->pollRx, &poll_tx, 5);
+        memcpy(&report2->answerTx, &answer_rx, 5);
+        memcpy(&report2->finalRx, &final_tx, 5);
+        dwNewTransmit(dev);
+        dwSetData(dev, (uint8_t*)&txPacket, MAC802154_HEADER_LENGTH+2+sizeof(lpsTwrTagReportPayload_t));
+        dwWaitForResponse(dev, true);
+        dwStartTransmit(dev);  
+        break;
+      }
+    }
+  }else{
+    switch(rxPacket.payload[LPS_TWR_TYPE]) {
+      case LPS_TWR_POLL:
+      {
+        txPacket.payload[LPS_TWR_TYPE] = LPS_TWR_ANSWER;
+        txPacket.payload[LPS_TWR_SEQ] = rxPacket.payload[LPS_TWR_SEQ];
+        dwGetReceiveTimestamp(dev, &arival);
+        arival.full -= (antennaDelay / 2);
+        poll_rx = arival;
+        dwNewTransmit(dev);
+        dwSetData(dev, (uint8_t*)&txPacket, MAC802154_HEADER_LENGTH+2);
+        dwWaitForResponse(dev, true);
+        dwStartTransmit(dev);
+        break;
+      }
+      case LPS_TWR_FINAL:
+      {
+        lpsTwrTagReportPayload_t *report = (lpsTwrTagReportPayload_t *)(txPacket.payload+2);
+        dwGetReceiveTimestamp(dev, &arival);
+        arival.full -= (antennaDelay / 2);
+        final_rx = arival;
+        txPacket.payload[LPS_TWR_TYPE] = LPS_TWR_REPORT;
+        txPacket.payload[LPS_TWR_SEQ] = rxPacket.payload[LPS_TWR_SEQ];
+        memcpy(&report->pollRx, &poll_rx, 5);
+        memcpy(&report->answerTx, &answer_tx, 5);
+        memcpy(&report->finalRx, &final_rx, 5);
+        dwNewTransmit(dev);
+        dwSetData(dev, (uint8_t*)&txPacket, MAC802154_HEADER_LENGTH+2+sizeof(lpsTwrTagReportPayload_t));
+        dwWaitForResponse(dev, true);
+        dwStartTransmit(dev);
+        break;
+      }
+      case (LPS_TWR_REPORT+1):
+      {
+        lpsTwrTagReportPayload_t *report2 = (lpsTwrTagReportPayload_t *)(rxPacket.payload+2);
+        double tround1, treply1, treply2, tround2, tprop_ctn, tprop;
+        memcpy(&poll_tx, &report2->pollRx, 5);
+        memcpy(&answer_rx, &report2->answerTx, 5);
+        memcpy(&final_tx, &report2->finalRx, 5);
+        tround1 = answer_rx.low32 - poll_tx.low32;
+        treply1 = answer_tx.low32 - poll_rx.low32;
+        tround2 = final_rx.low32 - answer_tx.low32;
+        treply2 = final_tx.low32 - answer_rx.low32;
+        tprop_ctn = ((tround1*tround2) - (treply1*treply2)) / (tround1 + tround2 + treply1 + treply2);
+        tprop = tprop_ctn / LOCODECK_TS_FREQ;
+        state.distance[0] = SPEED_OF_LIGHT * tprop;
+        rangingOk = true;
+        range_count++;
+        if(xTaskGetTickCount()>range_tick+1000)
+        {
+          range_tick = xTaskGetTickCount();
+          state.rangeNumPerSec[0] = range_count;
+          range_count = 0;  
+        }
+        dwNewReceive(dev);
+        dwSetDefaults(dev);
+        dwStartReceive(dev);
+        break;
+      }
     }
   }
 }
@@ -212,15 +236,11 @@ static uint32_t twrTagOnEvent(dwDevice_t *dev, uwbEvent_t event)
         dwSetData(dev, (uint8_t*)&txPacket, MAC802154_HEADER_LENGTH+2);
         dwWaitForResponse(dev, true);
         dwStartTransmit(dev);
-        taskDelayForTransMode = true;
-        dwSetReceiveWaitTimeout(dev, 1000);
       }else
       {
         dwNewReceive(dev);
 	      dwSetDefaults(dev);
         dwStartReceive(dev);
-        taskDelayForTransMode = false;
-        dwSetReceiveWaitTimeout(dev, 10000);
       }     
       break;
     default:
@@ -246,13 +266,16 @@ static void twrTagInit(dwDevice_t *dev)
   // Communication logic between each UWB
   if(selfID==0)
   {
-    current_mode_trans = true;
     current_receiveID = 1;
+    current_mode_trans = true;
+    taskDelayForTransMode = true;    
     dwSetReceiveWaitTimeout(dev, 1000);
   }
   else
   {
+    current_receiveID = 0;
     current_mode_trans = false;
+    taskDelayForTransMode = false;
     dwSetReceiveWaitTimeout(dev, 10000);
   }
 
