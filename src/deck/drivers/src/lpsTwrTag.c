@@ -7,8 +7,8 @@
 
 #define ANTENNA_OFFSET 154.6   // In meter
 #define basicAddr 0xbccf000000000000
-#define NumUWB 2
-#define selfID 1
+#define NumUWB 4
+#define selfID 3
 
 static locoAddress_t selfAddress = basicAddr + selfID;
 static const uint64_t antennaDelay = (ANTENNA_OFFSET*499.2e6*128)/299792458.0; // In radio tick
@@ -36,6 +36,9 @@ static uint8_t succededRanging, tdmaSynchronized; //dont know why
 static bool current_mode_trans;
 static uint8_t current_receiveID;
 
+static bool checkTurn;
+static uint32_t checkTurnTick = 0;
+
 static void txcallback(dwDevice_t *dev)
 {
   dwTime_t departure;
@@ -51,6 +54,20 @@ static void txcallback(dwDevice_t *dev)
         final_tx = departure;
         break;
       case LPS_TWR_REPORT+1:
+        if( (current_receiveID == 0) || (current_receiveID-1 == selfID) ){
+          // current_receiveID = current_receiveID;
+          current_mode_trans = false;
+          taskDelayForTransMode = false;
+          dwIdle(dev);
+          dwSetReceiveWaitTimeout(dev, 10000);
+          dwNewReceive(dev);
+          dwSetDefaults(dev);
+          dwStartReceive(dev);
+          checkTurn = true;
+          checkTurnTick = xTaskGetTickCount();
+        }else{
+          current_receiveID = current_receiveID - 1;
+        }
         break;
     }
   }else{
@@ -75,6 +92,12 @@ static void rxcallback(dwDevice_t *dev) {
   memset(&rxPacket, 0, MAC802154_HEADER_LENGTH);
   dwGetData(dev, (uint8_t*)&rxPacket, dataLength);
   if (rxPacket.destAddress != selfAddress) {
+    if(current_mode_trans){
+      current_mode_trans = false;
+      taskDelayForTransMode = false;
+      dwIdle(dev);
+      dwSetReceiveWaitTimeout(dev, 10000);
+    }
     dwNewReceive(dev);
     dwSetDefaults(dev);
     dwStartReceive(dev);
@@ -86,19 +109,6 @@ static void rxcallback(dwDevice_t *dev) {
 
   if(current_mode_trans){
     switch(rxPacket.payload[LPS_TWR_TYPE]) {
-      case LPS_TWR_POLL:
-      {
-        txPacket.payload[LPS_TWR_TYPE] = LPS_TWR_POLL;
-        txPacket.payload[LPS_TWR_SEQ] = 0;
-        txPacket.sourceAddress = selfAddress;
-        txPacket.destAddress = basicAddr + current_receiveID;
-        dwNewTransmit(dev);
-        dwSetDefaults(dev);
-        dwSetData(dev, (uint8_t*)&txPacket, MAC802154_HEADER_LENGTH+2);
-        dwWaitForResponse(dev, true);
-        dwStartTransmit(dev);
-        break;
-      }
       case LPS_TWR_ANSWER:
       {
         txPacket.payload[LPS_TWR_TYPE] = LPS_TWR_FINAL;
@@ -203,9 +213,32 @@ static void rxcallback(dwDevice_t *dev) {
           state.rangeNumPerSec[0] = range_count;
           range_count = 0;  
         }
-        dwNewReceive(dev);
-        dwSetDefaults(dev);
-        dwStartReceive(dev);
+        uint8_t fromID = (uint8_t)(rxPacket.sourceAddress & 0xFF);
+        if( selfID == fromID + 1 || selfID == 0 ){
+          current_mode_trans = true;
+          taskDelayForTransMode = true;
+          dwIdle(dev);
+          dwSetReceiveWaitTimeout(dev, 1000);
+          if(selfID == NumUWB-1)
+            current_receiveID = 0;
+          else
+            current_receiveID = NumUWB - 1;
+          if(selfID == 0)
+            current_receiveID = NumUWB - 2; // immediate problem
+          txPacket.payload[LPS_TWR_TYPE] = LPS_TWR_POLL;
+          txPacket.payload[LPS_TWR_SEQ] = 0;
+          txPacket.sourceAddress = selfAddress;
+          txPacket.destAddress = basicAddr + current_receiveID;
+          dwNewTransmit(dev);
+          dwSetDefaults(dev);
+          dwSetData(dev, (uint8_t*)&txPacket, MAC802154_HEADER_LENGTH+2);
+          dwWaitForResponse(dev, true);
+          dwStartTransmit(dev);
+        }else{
+          dwNewReceive(dev);
+          dwSetDefaults(dev);
+          dwStartReceive(dev);
+        }
         break;
       }
     }
@@ -217,6 +250,7 @@ static uint32_t twrTagOnEvent(dwDevice_t *dev, uwbEvent_t event)
   switch(event) {
     case eventPacketReceived:
       rxcallback(dev);
+      checkTurn = false;
       break;
     case eventPacketSent:
       txcallback(dev);
@@ -238,6 +272,26 @@ static uint32_t twrTagOnEvent(dwDevice_t *dev, uwbEvent_t event)
         dwStartTransmit(dev);
       }else
       {
+        if(xTaskGetTickCount() > checkTurnTick + 20) // > 20ms
+        {
+          if(checkTurn == true){
+            current_mode_trans = true;
+            taskDelayForTransMode = true;
+            dwIdle(dev);
+            dwSetReceiveWaitTimeout(dev, 1000);
+            txPacket.payload[LPS_TWR_TYPE] = LPS_TWR_POLL;
+            txPacket.payload[LPS_TWR_SEQ] = 0;
+            txPacket.sourceAddress = selfAddress;
+            txPacket.destAddress = basicAddr + current_receiveID;
+            dwNewTransmit(dev);
+            dwSetDefaults(dev);
+            dwSetData(dev, (uint8_t*)&txPacket, MAC802154_HEADER_LENGTH+2);
+            dwWaitForResponse(dev, true);
+            dwStartTransmit(dev);
+            checkTurn = false;
+            break;
+          }
+        }
         dwNewReceive(dev);
 	      dwSetDefaults(dev);
         dwStartReceive(dev);
@@ -266,19 +320,20 @@ static void twrTagInit(dwDevice_t *dev)
   // Communication logic between each UWB
   if(selfID==0)
   {
-    current_receiveID = 1;
+    current_receiveID = NumUWB-1;
     current_mode_trans = true;
     taskDelayForTransMode = true;    
     dwSetReceiveWaitTimeout(dev, 1000);
   }
   else
   {
-    current_receiveID = 0;
+    // current_receiveID = 0;
     current_mode_trans = false;
     taskDelayForTransMode = false;
     dwSetReceiveWaitTimeout(dev, 10000);
   }
 
+  checkTurn = false;
   tdmaSynchronized = false;
   rangingOk = false;
 }
