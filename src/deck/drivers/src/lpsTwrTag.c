@@ -4,18 +4,19 @@
 #include "physicalConstants.h"
 #include "FreeRTOS.h"
 #include "task.h"
+#include "configblock.h"
 
 #define ANTENNA_OFFSET 154.6   // In meter
 #define basicAddr 0xbccf000000000000
-#define NumUWB 4
-#define selfID 3
-
-static locoAddress_t selfAddress = basicAddr + selfID;
+#define NumUWB 5
+// Define: id = last_number_of_address - 5
+static uint8_t selfID;
+static locoAddress_t selfAddress;
 static const uint64_t antennaDelay = (ANTENNA_OFFSET*499.2e6*128)/299792458.0; // In radio tick
 
 typedef struct {
-  float distance[NumUWB-1];
-  int16_t rangeNumPerSec[NumUWB-1];
+  uint16_t distance[NumUWB];
+  int16_t rangeNumPerSec;
 } twrState_t;
 static twrState_t state;
 
@@ -135,14 +136,14 @@ static void rxcallback(dwDevice_t *dev) {
         treply2 = final_tx.low32 - answer_rx.low32;
         tprop_ctn = ((tround1*tround2) - (treply1*treply2)) / (tround1 + tround2 + treply1 + treply2);
         tprop = tprop_ctn / LOCODECK_TS_FREQ;
-        state.distance[0] = SPEED_OF_LIGHT * tprop;
+        state.distance[current_receiveID] = (uint16_t)(1000 * (SPEED_OF_LIGHT * tprop + 1));
         rangingOk = true;
 
         range_count++;
         if(xTaskGetTickCount()>range_tick+1000)
         {
           range_tick = xTaskGetTickCount();
-          state.rangeNumPerSec[0] = range_count;
+          state.rangeNumPerSec = range_count;
           range_count = 0;  
         }
 
@@ -204,13 +205,13 @@ static void rxcallback(dwDevice_t *dev) {
         treply2 = final_tx.low32 - answer_rx.low32;
         tprop_ctn = ((tround1*tround2) - (treply1*treply2)) / (tround1 + tround2 + treply1 + treply2);
         tprop = tprop_ctn / LOCODECK_TS_FREQ;
-        state.distance[0] = SPEED_OF_LIGHT * tprop;
+        state.distance[(uint8_t)(rxPacket.sourceAddress & 0xFF)] = (uint16_t)(1000 * (SPEED_OF_LIGHT * tprop + 1));
         rangingOk = true;
         range_count++;
         if(xTaskGetTickCount()>range_tick+1000)
         {
           range_tick = xTaskGetTickCount();
-          state.rangeNumPerSec[0] = range_count;
+          state.rangeNumPerSec = range_count;
           range_count = 0;  
         }
         uint8_t fromID = (uint8_t)(rxPacket.sourceAddress & 0xFF);
@@ -317,6 +318,9 @@ static void twrTagInit(dwDevice_t *dev)
   memset(&final_tx, 0, sizeof(final_tx));
   memset(&final_rx, 0, sizeof(final_rx));
 
+  selfID = (uint8_t)(((configblockGetRadioAddress()) & 0x000000000f) - 5);
+  selfAddress = basicAddr + selfID;
+
   // Communication logic between each UWB
   if(selfID==0)
   {
@@ -376,6 +380,10 @@ uwbAlgorithm_t uwbTwrTagAlgorithm = {
 };
 
 LOG_GROUP_START(ranging)
-LOG_ADD(LOG_FLOAT, distance0, &state.distance[0])
-LOG_ADD(LOG_INT16, rangeNum0, &state.rangeNumPerSec[0])
+LOG_ADD(LOG_UINT16, distance0, &state.distance[0])
+LOG_ADD(LOG_UINT16, distance1, &state.distance[1])
+LOG_ADD(LOG_UINT16, distance2, &state.distance[2])
+LOG_ADD(LOG_UINT16, distance3, &state.distance[3])
+LOG_ADD(LOG_UINT16, distance4, &state.distance[4])
+LOG_ADD(LOG_INT16, rangeNum0, &state.rangeNumPerSec)
 LOG_GROUP_STOP(ranging)

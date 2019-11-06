@@ -199,11 +199,11 @@ static inline bool stateEstimatorHasHeightPacket(heightMeasurement_t *height) {
 #define IN_FLIGHT_TIME_THRESHOLD (500)
 
 // the reversion of pitch and roll to zero
-#ifdef LPS_2D_POSITION_HEIGHT
+// #ifdef LPS_2D_POSITION_HEIGHT
 #define ROLLPITCH_ZERO_REVERSION (0.0f)
-#else
-#define ROLLPITCH_ZERO_REVERSION (0.001f)
-#endif
+// #else
+// #define ROLLPITCH_ZERO_REVERSION (0.001f)
+// #endif
 
 // The bounds on the covariance, these shouldn't be hit, but sometimes are... why?
 #define MAX_COVARIANCE (100)
@@ -294,6 +294,9 @@ static float varSkew;
 static uint32_t lastFlightCmd;
 static uint32_t takeoffTime;
 static uint32_t tdoaCount;
+static float swarmVx;
+static float swarmVy;
+static float swarmGz;
 
 /**
  * Supporting and utility functions
@@ -530,6 +533,10 @@ void estimatorKalman(state_t *state, sensorData_t *sensors, control_t *control, 
   {
     stateEstimatorFinalize(sensors, osTick);
     stateEstimatorAssertNotNaN();
+    swarmVx = R[0][0] * S[STATE_PX] + R[0][1] * S[STATE_PY] + R[0][2] * S[STATE_PZ];
+    swarmVy = R[1][0] * S[STATE_PX] + R[1][1] * S[STATE_PY] + R[1][2] * S[STATE_PZ];
+    // swarmGz = atan2f(2*(q[1]*q[2]+q[0]*q[3]) , q[0]*q[0] + q[1]*q[1] - q[2]*q[2] - q[3]*q[3]);
+    swarmGz = sensors->gyro.z * DEG_TO_RAD;
   }
 
   /**
@@ -1509,6 +1516,13 @@ LOG_GROUP_START(kalman_pred)
   LOG_ADD(LOG_FLOAT, measNX, &measuredNX)
   LOG_ADD(LOG_FLOAT, measNY, &measuredNY)
 LOG_GROUP_STOP(kalman_pred)
+
+LOG_GROUP_START(swarmstate)
+  LOG_ADD(LOG_FLOAT, swaVx, &swarmVx)
+  LOG_ADD(LOG_FLOAT, swaVy, &swarmVy)
+  LOG_ADD(LOG_FLOAT, swaGz, &swarmGz)
+  LOG_ADD(LOG_FLOAT, swah, &S[STATE_Z])
+LOG_GROUP_STOP(swarmstate)
 
 // Stock log groups
 LOG_GROUP_START(kalman)
