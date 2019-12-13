@@ -92,21 +92,21 @@ module RakefileHelpers
     return result
   end
 
-  def build_compiler_fields
+  def build_compiler_fields(extra_options=[])
     command  = tackit($cfg['compiler']['path'])
     if $cfg['compiler']['defines']['items'].nil?
       defines  = ''
     else
       defines  = squash($cfg['compiler']['defines']['prefix'], $cfg['compiler']['defines']['items'])
     end
-    options  = squash('', $cfg['compiler']['options'])
+    options  = squash('', $cfg['compiler']['options'] + extra_options)
     includes = squash($cfg['compiler']['includes']['prefix'], $cfg['compiler']['includes']['items'])
     includes = includes.gsub(/\\ /, ' ').gsub(/\\\"/, '"').gsub(/\\$/, '') # Remove trailing slashes (for IAR)
     return {:command => command, :defines => defines, :options => options, :includes => includes}
   end
 
-  def compile(file, defines=[])
-    compiler = build_compiler_fields
+  def compile(file, defines=[], extra_options=[])
+    compiler = build_compiler_fields(extra_options)
     cmd_str  = "#{compiler[:command]}#{compiler[:defines]}#{compiler[:options]}#{compiler[:includes]} #{file} " +
                "#{$cfg['compiler']['object_files']['prefix']}#{$cfg['compiler']['object_files']['destination']}"
     obj_file = "#{File.basename(file, C_EXTENSION)}#{$cfg['compiler']['object_files']['extension']}"
@@ -160,10 +160,10 @@ module RakefileHelpers
     return {:command => command, :pre_support => pre_support, :post_support => post_support}
   end
 
-  def execute(command_string, verbose=true)
-    report command_string
+  def execute(command_string, logOutput: true)
+    report(command_string) if $logCmd
     output = `#{command_string}`.chomp
-    report(output) if (verbose && !output.nil? && (output.length > 0))
+    report(output) if (logOutput && !output.nil? && (output.length > 0))
     if $?.exitstatus != 0
       raise "Command failed. (Returned #{$?.exitstatus})"
     end
@@ -184,17 +184,19 @@ module RakefileHelpers
   def parse_and_run_tests(args)
     defines = find_defines_in_args(args)
     test_files = find_test_files_in_args(args)
+    output_style = find_output_style_in_args(args)
+
+    set_environment_vars($cfg['env'])
 
     # No file names found in the args, find all files that are unit test files
     if test_files.length == 0
       test_files = exclude_test_files(get_unit_test_files(), defines)
     end
 
-    run_tests(test_files, defines)
+    run_tests(test_files, defines, output_style)
   end
 
-  def run_tests(test_files, defines)
-
+  def run_tests(test_files, defines, output_style)
     report 'Running system tests...'
 
     # Tack on TEST define for compiling unit tests
@@ -203,6 +205,13 @@ module RakefileHelpers
     $cfg['compiler']['defines']['items'] = [] if $cfg['compiler']['defines']['items'].nil?
     $cfg['compiler']['defines']['items'] << 'TEST'
     $cfg['compiler']['defines']['items'].concat defines
+
+    # Supress logging of commands and all warningns in minimalistic output style
+    $logCmd = true
+    if output_style.include?('min')
+      $cfg['compiler']['options'] << '-w'
+      $logCmd = false
+    end
 
     include_dirs = get_local_include_dirs
 
@@ -235,6 +244,10 @@ module RakefileHelpers
           obj_list << compile(src_file, test_defines)
         end
       end
+
+      # build libs
+      lib_annotations = read_lib_annotations(test)
+      obj_list += add_lib_source_files(lib_annotations, test_defines)
 
       # Build the test runner (generate if configured to do so)
       test_base = File.basename(test, C_EXTENSION)
@@ -308,6 +321,15 @@ module RakefileHelpers
     end
   end
 
+  def find_output_style_in_args(args)
+    key = 'UNIT_TEST_STYLE='
+    args.each do |arg|
+      if arg.start_with?(key)
+        return arg[(key.length)..-1].split(' ')
+      end
+    end
+  end
+
   # Parse the arguments and find all defines that are passed in on the command line
   # Defines are part of compiler flags and start with -D, for instance -DMY_DEFINE
   # All compiler flags are passed in as one string
@@ -355,5 +377,49 @@ module RakefileHelpers
     end
 
     return false
+  end
+
+  # Annotation to add files for libraries
+  # When this annotation is used source files for libs are added to the build
+  # with the unit test so that they can be called and does not have to be
+  # replaced by mocks.
+  def read_lib_annotations(file)
+    annotation_str = '@BUILD_LIB'
+    libs = []
+
+    File.foreach( file ) do |line|
+      if line.include? annotation_str
+        tokens = line.split(' ')
+        index = tokens.index annotation_str
+
+        if tokens.length >= (index + 2)
+          libs << tokens[index + 1]
+        end
+      end
+    end
+
+    libs
+  end
+
+  def add_lib_source_files(libs, test_defines)
+    obj_list = []
+    libs.each do |lib|
+      puts 'Adding lib ' + lib
+
+      files = $cfg['compiler']['libs'][lib]['files']
+      extra_options = $cfg['compiler']['libs'][lib]['extra_options']
+      files.each do |src_file|
+        obj_list << compile(src_file, test_defines, extra_options=extra_options)
+      end
+    end
+
+    obj_list
+  end
+
+  def set_environment_vars(env_vars)
+    # puts "Setting env vars: " + env_vars.to_s
+    env_vars.each do |key, val|
+      ENV[key] = val
+    end
   end
 end

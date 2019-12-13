@@ -42,8 +42,8 @@ const static int priorityDisable = COMMANDER_PRIORITY_DISABLE;
 static uint32_t lastUpdate;
 static bool enableHighLevel = false;
 
-QueueHandle_t setpointQueue;
-QueueHandle_t priorityQueue;
+static QueueHandle_t setpointQueue;
+static QueueHandle_t priorityQueue;
 
 /* Public functions */
 void commanderInit(void)
@@ -66,7 +66,9 @@ void commanderInit(void)
 void commanderSetSetpoint(setpoint_t *setpoint, int priority)
 {
   int currentPriority;
-  xQueuePeek(priorityQueue, &currentPriority, 0);
+
+  const BaseType_t peekResult = xQueuePeek(priorityQueue, &currentPriority, 0);
+  ASSERT(peekResult == pdTRUE);
 
   if (priority >= currentPriority) {
     setpoint->timestamp = xTaskGetTickCount();
@@ -117,7 +119,10 @@ uint32_t commanderGetInactivityTime(void)
 int commanderGetActivePriority(void)
 {
   int priority;
-  xQueuePeek(priorityQueue, &priority, 0);
+
+  const BaseType_t peekResult = xQueuePeek(priorityQueue, &priority, 0);
+  ASSERT(peekResult == pdTRUE);
+
   return priority;
 }
 

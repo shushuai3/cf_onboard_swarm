@@ -73,7 +73,7 @@ static void usblinkTask(void *param)
     p.size = usbIn.size - 1;
     memcpy(&p.raw, usbIn.data, usbIn.size);
     // This queuing will copy a CRTP packet size from usbIn
-    xQueueSend(crtpPacketDelivery, &p, 0);
+    ASSERT(xQueueSend(crtpPacketDelivery, &p, 0) == pdTRUE);
   }
 
 }
@@ -126,7 +126,7 @@ void usblinkInit()
   // Initialize the USB peripheral
   usbInit();
 
-  crtpPacketDelivery = xQueueCreate(5, sizeof(CRTPPacket));
+  crtpPacketDelivery = xQueueCreate(16, sizeof(CRTPPacket));
   DEBUG_QUEUE_MONITOR_REGISTER(crtpPacketDelivery);
 
   xTaskCreate(usblinkTask, USBLINK_TASK_NAME,

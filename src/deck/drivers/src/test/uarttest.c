@@ -47,7 +47,7 @@ static const char testString[] = "ABC123";
 static bool uarttestRun()
 {
   bool status = true;
-  char testChar;
+  uint8_t testChar;
 
   uart1Init(9600);
   uart2Init(9600);

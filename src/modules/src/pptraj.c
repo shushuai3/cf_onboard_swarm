@@ -54,6 +54,34 @@ void polylinear(float p[PP_SIZE], float duration, float x0, float x1)
 	}
 }
 
+// precalculated factorials that we will need
+static const int facs[PP_SIZE] = { 1, 1, 2, 6, 24, 120, 720, 5040 };
+
+void polybezier(float p[PP_SIZE], float duration, float* x, int dim) {
+	int i, j, n, sign;
+	float coeff;
+
+	if (dim <= 0) {
+		/* nothing to do */
+	} else if (dim == 1) {
+		p[0] = x[0];
+	} else if (dim == 2) {
+		polylinear(p, duration, x[0], x[1]);
+	} else {
+		n = ((dim < PP_SIZE) ? dim : PP_SIZE) - 1;
+		sign = 1;
+		for (j = 0; j <= n; j++) {
+			coeff = 0;
+			sign = (j % 2) ? -1 : 1;
+			for (i = 0; i <= j; i++, sign *= -1) {
+				coeff += sign * x[i] / facs[i] / facs[j-i];
+			}
+			p[j] = coeff * facs[n] / facs[n-j];
+		}
+		polystretchtime(p, duration);
+	}
+}
+
 void polyscale(float p[PP_SIZE], float s)
 {
 	for (int i = 0; i < PP_SIZE; ++i) {
@@ -115,7 +143,7 @@ void poly5(float poly[PP_SIZE], float T,
 	for (int i = 6; i < PP_SIZE; ++i) {
 		poly[i] = 0;
 	}
-};
+}
 
 static void poly7_nojerk(float poly[PP_SIZE], float T,
 	float x0, float dx0, float ddx0,
@@ -275,7 +303,7 @@ struct traj_eval poly4d_eval(struct poly4d const *p, float t)
 	// float thrust_mag = mass * vmag(thrust);
 
 	struct vec z_body = vnormalize(thrust);
-	struct vec x_world = mkvec(cos(out.yaw), sin(out.yaw), 0);
+	struct vec x_world = mkvec(cosf(out.yaw), sinf(out.yaw), 0);
 	struct vec y_body = vnormalize(vcross(z_body, x_world));
 	struct vec x_body = vcross(y_body, z_body);
 

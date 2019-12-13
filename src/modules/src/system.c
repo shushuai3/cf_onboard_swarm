@@ -61,8 +61,10 @@
 #include "buzzer.h"
 #include "sound.h"
 #include "sysload.h"
+#include "estimator_kalman.h"
 #include "deck.h"
 #include "extrx.h"
+#include "app.h"
 
 /* Private variable */
 static bool selftestPassed;
@@ -121,6 +123,10 @@ void systemInit(void)
   pmInit();
   buzzerInit();
 
+#ifdef APP_ENABLED
+  appInit();
+#endif
+
   isInit = true;
 }
 
@@ -161,6 +167,7 @@ void systemTask(void *arg)
   commanderInit();
 
   StateEstimatorType estimator = anyEstimator;
+  estimatorKalmanTaskInit();
   deckInit();
   estimator = deckGetRequiredEstimator();
   stabilizerInit(estimator);
@@ -181,6 +188,7 @@ void systemTask(void *arg)
   pass &= commTest();
   pass &= commanderTest();
   pass &= stabilizerTest();
+  pass &= estimatorKalmanTaskTest();
   pass &= deckTest();
   pass &= soundTest();
   pass &= memTest();

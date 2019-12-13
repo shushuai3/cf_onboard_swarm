@@ -51,6 +51,7 @@
 __ALIGN_BEGIN USB_OTG_CORE_HANDLE    USB_OTG_dev __ALIGN_END ;
 
 static bool isInit = false;
+static bool doingTransfer = false;
 
 static xQueueHandle usbDataRx;
 static xQueueHandle usbDataTx;
@@ -141,6 +142,20 @@ USBD_Usr_cb_TypeDef USR_cb =
 
 int command = 0xFF;
 
+static void resetUSB(void) {
+  portBASE_TYPE xTaskWokenByReceive = pdFALSE;
+
+  crtpSetLink(radiolinkGetLink());
+
+  if (isInit == true) {
+    // Empty queue
+    while (xQueueReceiveFromISR(usbDataTx, &outPacket, &xTaskWokenByReceive) == pdTRUE)
+      ;
+  }
+  
+  USB_OTG_FlushTxFifo(&USB_OTG_dev, IN_EP);
+}
+
 static uint8_t usbd_cf_Setup(void *pdev , USB_SETUP_REQ  *req)
 {
   command = req->wIndex;
@@ -207,13 +222,18 @@ static uint8_t  usbd_cf_DataIn (void *pdev, uint8_t epnum)
 {
   portBASE_TYPE xTaskWokenByReceive = pdFALSE;
 
+  doingTransfer = false;
+
   if (xQueueReceiveFromISR(usbDataTx, &outPacket, &xTaskWokenByReceive) == pdTRUE)
   {
+    doingTransfer = true;
     DCD_EP_Tx (pdev,
-               IN_EP,
-               (uint8_t*)outPacket.data,
-               outPacket.size);
+              IN_EP,
+              (uint8_t*)outPacket.data,
+              outPacket.size);
   }
+
+  portYIELD_FROM_ISR(xTaskWokenByReceive);
 
   return USBD_OK;
 }
@@ -222,13 +242,18 @@ static uint8_t  usbd_cf_SOF (void *pdev)
 {
   portBASE_TYPE xTaskWokenByReceive = pdFALSE;
 
-  if (xQueueReceiveFromISR(usbDataTx, &outPacket, &xTaskWokenByReceive) == pdTRUE)
-  {
-    DCD_EP_Tx (pdev,
-               IN_EP,
-               (uint8_t*)outPacket.data,
-               outPacket.size);
+  if (!doingTransfer) {
+    if (xQueueReceiveFromISR(usbDataTx, &outPacket, &xTaskWokenByReceive) == pdTRUE)
+    {
+      doingTransfer = true;
+      DCD_EP_Tx (pdev,
+                IN_EP,
+                (uint8_t*)outPacket.data,
+                outPacket.size);
+    }
   }
+
+  portYIELD_FROM_ISR(xTaskWokenByReceive);
 
   return USBD_OK;
 }
@@ -288,6 +313,7 @@ void USBD_USR_Init(void)
 */
 void USBD_USR_DeviceReset(uint8_t speed)
 {
+  resetUSB();
 }
 
 
@@ -308,7 +334,7 @@ void USBD_USR_DeviceConfigured(void)
 void USBD_USR_DeviceSuspended(void)
 {
   /* USB communication suspended (probably USB unplugged). Switch back to radiolink */
-  crtpSetLink(radiolinkGetLink());
+  resetUSB();
 }
 
 
@@ -339,7 +365,7 @@ void USBD_USR_DeviceConnected(void)
 */
 void USBD_USR_DeviceDisconnected(void)
 {
-  crtpSetLink(radiolinkGetLink());
+  resetUSB();
 }
 
 void usbInit(void)

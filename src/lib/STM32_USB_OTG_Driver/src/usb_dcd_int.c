@@ -437,7 +437,7 @@ static uint32_t DCD_HandleInEP_ISR(USB_OTG_CORE_HANDLE *pdev)
   uint32_t fifoemptymsk;
   diepint.d32 = 0;
   ep_intr = USB_OTG_ReadDevAllInEPItr(pdev);
-  
+
   while ( ep_intr )
   {
     if (ep_intr&0x1) /* In ITR */
@@ -445,8 +445,6 @@ static uint32_t DCD_HandleInEP_ISR(USB_OTG_CORE_HANDLE *pdev)
       diepint.d32 = DCD_ReadDevInEP(pdev , epnum); /* Get In ITR status */
       if ( diepint.b.xfercompl )
       {
-        fifoemptymsk = 0x1 << epnum;
-        USB_OTG_MODIFY_REG32(&pdev->regs.DREGS->DIEPEMPMSK, fifoemptymsk, 0);
         CLEAR_IN_EP_INTR(epnum, xfercompl);
         /* TX COMPLETE */
         USBD_DCD_INT_fops->DataInStage(pdev , epnum);
@@ -478,9 +476,12 @@ static uint32_t DCD_HandleInEP_ISR(USB_OTG_CORE_HANDLE *pdev)
       }       
       if (diepint.b.emptyintr)
       {
-        
+
         DCD_WriteEmptyTxFifo(pdev , epnum);
         
+        fifoemptymsk = 0x1 << epnum;
+        USB_OTG_MODIFY_REG32(&pdev->regs.DREGS->DIEPEMPMSK, fifoemptymsk, 0);
+
         CLEAR_IN_EP_INTR(epnum, emptyintr);
       }
     }
@@ -685,7 +686,7 @@ static uint32_t DCD_WriteEmptyTxFifo(USB_OTG_CORE_HANDLE *pdev, uint32_t epnum)
     
     txstatus.d32 = USB_OTG_READ_REG32(&pdev->regs.INEP_REGS[epnum]->DTXFSTS);
   }
-  
+
   return 1;
 }
 

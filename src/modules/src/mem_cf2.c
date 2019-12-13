@@ -44,10 +44,15 @@
 #include "ledring12.h"
 #include "locodeck.h"
 #include "crtp_commander_high_level.h"
+#include "lighthouse.h"
+#include "usddeck.h"
 
 #include "console.h"
 #include "assert.h"
 #include "debug.h"
+
+#include "log.h"
+#include "param.h"
 
 #if 0
 #define MEM_DEBUG(fmt, ...) DEBUG_PRINT("D/log " fmt, ## __VA_ARGS__)
@@ -68,7 +73,10 @@
 #define LOCO_ID         0x02
 #define TRAJ_ID         0x03
 #define LOCO2_ID        0x04
-#define OW_FIRST_ID     0x05
+#define LH_ID           0x05
+#define TESTER_ID       0x06
+#define USD_ID          0x07
+#define OW_FIRST_ID     0x08
 
 #define STATUS_OK 0
 
@@ -78,6 +86,9 @@
 #define MEM_TYPE_LOCO   0x11
 #define MEM_TYPE_TRAJ   0x12
 #define MEM_TYPE_LOCO2  0x13
+#define MEM_TYPE_LH     0x14
+#define MEM_TYPE_TESTER 0x15
+#define MEM_TYPE_USD    0x16
 
 #define MEM_LOCO_INFO             0x0000
 #define MEM_LOCO_ANCHOR_BASE      0x1000
@@ -92,6 +103,7 @@
 #define MEM_LOCO2_ANCHOR_PAGE_SIZE 0x0100
 #define MEM_LOCO2_PAGE_LEN         (3 * sizeof(float) + 1)
 
+#define MEM_TESTER_SIZE            0x1000
 
 //Private functions
 static void memTask(void * prm);
@@ -103,6 +115,11 @@ static uint8_t handleLoco2MemRead(uint32_t memAddr, uint8_t readLen, uint8_t* de
 static void createNbrResponse(CRTPPacket* p);
 static void createInfoResponse(CRTPPacket* p, uint8_t memId);
 static void createInfoResponseBody(CRTPPacket* p, uint8_t type, uint32_t memSize, const uint8_t data[8]);
+
+static uint8_t handleMemTesterRead(uint32_t memAddr, uint8_t readLen, uint8_t* dest);
+static uint8_t handleMemTesterWrite(uint32_t memAddr, uint8_t writeLen, uint8_t* src);
+static uint32_t memTesterWriteErrorCount = 0;
+static uint8_t memTesterWriteReset = 0;
 
 static bool isInit = false;
 
@@ -212,6 +229,15 @@ void createInfoResponse(CRTPPacket* p, uint8_t memId)
     case LOCO2_ID:
       createInfoResponseBody(p, MEM_TYPE_LOCO2, MEM_LOCO_ANCHOR_BASE + MEM_LOCO_ANCHOR_PAGE_SIZE * 256, noData);
       break;
+    case LH_ID:
+      createInfoResponseBody(p, MEM_TYPE_LH, sizeof(lighthouseBaseStationsGeometry), noData);
+      break;
+    case TESTER_ID:
+      createInfoResponseBody(p, MEM_TYPE_TESTER, MEM_TESTER_SIZE, noData);
+      break;
+    case USD_ID:
+      createInfoResponseBody(p, MEM_TYPE_USD, usddeckFileSize(), noData);
+      break;
     default:
       if (owGetinfo(memId - OW_FIRST_ID, &serialNbr))
       {
@@ -286,6 +312,33 @@ void memReadProcess()
 
     case LOCO2_ID:
       status = handleLoco2MemRead(memAddr, readLen, &p.data[6]);
+      break;
+
+    case LH_ID:
+      {
+        if (memAddr + readLen <= sizeof(lighthouseBaseStationsGeometry)) {
+          uint8_t* start = (uint8_t*)lighthouseBaseStationsGeometry;
+          memcpy(&p.data[6], start + memAddr, readLen);
+          status = STATUS_OK;
+        } else {
+          status = EIO;
+        }
+      }
+      break;
+
+    case TESTER_ID:
+      status = handleMemTesterRead(memAddr, readLen, &p.data[6]);
+      break;
+
+    case USD_ID:
+      {
+        if (memAddr + readLen <= usddeckFileSize() &&
+            usddeckRead(memAddr, &p.data[6], readLen)) {
+          status = STATUS_OK;
+        } else {
+          status = EIO;
+        }
+      }
       break;
 
     default:
@@ -480,13 +533,6 @@ void memWriteProcess()
       }
       break;
 
-    case LOCO_ID:
-        // Fall through
-    case LOCO2_ID:
-      // Not supported
-      status = EIO;
-      break;
-
     case TRAJ_ID:
       {
         if ((memAddr + writeLen) <= sizeof(trajectories_memory)) {
@@ -496,6 +542,31 @@ void memWriteProcess()
           status = EIO;
         }
       }
+      break;
+
+    case LH_ID:
+      {
+        if ((memAddr + writeLen) <= sizeof(lighthouseBaseStationsGeometry)) {
+          uint8_t* start = (uint8_t*)lighthouseBaseStationsGeometry;
+          memcpy(start + memAddr, &p.data[5], writeLen);
+          status = STATUS_OK;
+        } else {
+          status = EIO;
+        }
+      }
+      break;
+
+    case TESTER_ID:
+      status = handleMemTesterWrite(memAddr, writeLen, &p.data[5]);
+      break;
+
+    case USD_ID:
+        // Fall through
+    case LOCO_ID:
+        // Fall through
+    case LOCO2_ID:
+      // Not supported
+      status = EIO;
       break;
 
     default:
@@ -515,3 +586,54 @@ void memWriteProcess()
 
   crtpSendPacket(&p);
 }
+
+
+// The memory tester is used to verify the functionality of the memory sub system.
+// It supports "virtual" read and writes that are used by a test script to
+// check that a client (for instance the python lib) is working as expected.
+
+// When reading data from the tester, it simply fills up a buffer with known data so that the
+// client can examine the data and verify that buffers have benn correctly assembled.
+static uint8_t handleMemTesterRead(uint32_t memAddr, uint8_t readLen, uint8_t* dest) {
+  for (int i = 0; i < readLen; i++) {
+    uint32_t addr = memAddr + i;
+    uint8_t data = addr & 0xff;
+    dest[i] = data;
+  }
+
+  return STATUS_OK;
+}
+
+// When writing data to the tester, the tester verifies that the received data
+// contains the expected values.
+static uint8_t handleMemTesterWrite(uint32_t memAddr, uint8_t writeLen, uint8_t* src) {
+  if (memTesterWriteReset) {
+    memTesterWriteReset = 0;
+    memTesterWriteErrorCount = 0;
+  }
+
+  for (int i = 0; i < writeLen; i++) {
+    uint32_t addr = memAddr + i;
+    uint8_t expectedData = addr & 0xff;
+    uint8_t actualData = src[i];
+    if (actualData != expectedData) {
+      // Log first error
+      if (memTesterWriteErrorCount == 0) {
+        DEBUG_PRINT("Verification failed: expected: %d, actual: %d, addr: %lu\n", expectedData, actualData, addr);
+      }
+
+      memTesterWriteErrorCount++;
+      break;
+    }
+  }
+
+  return STATUS_OK;
+}
+
+PARAM_GROUP_START(memTst)
+  PARAM_ADD(PARAM_UINT8, resetW, &memTesterWriteReset)
+PARAM_GROUP_STOP(memTst)
+
+LOG_GROUP_START(memTst)
+  LOG_ADD(LOG_UINT32, errCntW, &memTesterWriteErrorCount)
+LOG_GROUP_STOP(memTst)

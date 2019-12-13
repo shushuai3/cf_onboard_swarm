@@ -38,9 +38,11 @@
 #define ENABLE_UART1_RCC       RCC_APB1PeriphClockCmd
 #define UART1_IRQ              USART3_IRQn
 
-#define UART1_DMA_IRQ          DMA1_Channel2_IRQn
-#define UART1_DMA_IT_TC        DMA1_IT_TC2
-#define UART1_DMA_CH           DMA1_Channel2
+#define UART1_DMA_IRQ          DMA1_Stream3_IRQn
+#define UART1_DMA_IT_TC        DMA_IT_TC4
+#define UART1_DMA_STREAM       DMA1_Stream3
+#define UART1_DMA_CH           DMA_Channel_4
+#define UART1_DMA_FLAG_TCIF    DMA_FLAG_TCIF3
 
 #define UART1_GPIO_PERIF       RCC_AHB1Periph_GPIOC
 #define UART1_GPIO_PORT        GPIOC
@@ -51,10 +53,19 @@
 #define UART1_GPIO_AF_TX       GPIO_AF_USART3
 #define UART1_GPIO_AF_RX       GPIO_AF_USART3
 
+typedef enum {
+    uart1ParityNone, uart1ParityEven, uart1ParityOdd
+} uart1Parity_t;
+
 /**
- * Initialize the UART.
+ * Initialize the UART with parity None
  */
 void uart1Init(const uint32_t baudrate);
+
+/**
+ * Initialize the UART with custom parity
+ */
+void uart1InitWithParity(const uint32_t baudrate, const uart1Parity_t parity);
 
 /**
  * Test the UART status.
@@ -78,6 +89,13 @@ bool uart1GetDataWithTimout(uint8_t *c);
  * @param[in] data  Pointer to data
  */
 void uart1SendData(uint32_t size, uint8_t* data);
+
+/**
+ * Sends raw data using DMA transfer.
+ * @param[in] size  Number of bytes to send
+ * @param[in] data  Pointer to data
+ */
+void uart1SendDataDmaBlocking(uint32_t size, uint8_t* data);
 
 /**
  * Send a single character to the serial port using the uartSendData function.

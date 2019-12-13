@@ -54,7 +54,9 @@
   #define CONFIG_BLOCK_ADDRESS    (2048 * (64-1))
   #define MCU_ID_ADDRESS          0x1FFF7A10
   #define MCU_FLASH_SIZE_ADDRESS  0x1FFF7A22
-  #define FREERTOS_HEAP_SIZE      40000
+  #ifndef FREERTOS_HEAP_SIZE
+    #define FREERTOS_HEAP_SIZE      40000
+  #endif
   #define FREERTOS_MIN_STACK_SIZE 150       // M4-FPU register setup is bigger so stack needs to be bigger
   #define FREERTOS_MCU_CLOCK_HZ   168000000
 
@@ -85,6 +87,14 @@
 #define USDWRITE_TASK_PRI       0
 #define PCA9685_TASK_PRI        3
 #define CMD_HIGH_LEVEL_TASK_PRI 2
+#define BQ_OSD_TASK_PRI         1
+#define GTGPS_DECK_TASK_PRI     1
+#define LIGHTHOUSE_TASK_PRI     3
+#define LPS_DECK_TASK_PRI       5
+#define OA_DECK_TASK_PRI        3
+#define UART1_TEST_TASK_PRI     1
+#define UART2_TEST_TASK_PRI     1
+#define KALMAN_TASK_PRI         2
 
 #define SYSLINK_TASK_PRI        3
 #define USBLINK_TASK_PRI        3
@@ -123,6 +133,14 @@
 #define PCA9685_TASK_NAME       "PCA9685"
 #define CMD_HIGH_LEVEL_TASK_NAME "CMDHL"
 #define MULTIRANGER_TASK_NAME   "MR"
+#define BQ_OSD_TASK_NAME        "BQ_OSDTASK"
+#define GTGPS_DECK_TASK_NAME    "GTGPS"
+#define LIGHTHOUSE_TASK_NAME    "LH"
+#define LPS_DECK_TASK_NAME      "LPS"
+#define OA_DECK_TASK_NAME       "OA"
+#define UART1_TEST_TASK_NAME    "UART1TEST"
+#define UART2_TEST_TASK_NAME    "UART2TEST"
+#define KALMAN_TASK_NAME        "KALMAN"
 
 //Task stack sizes
 #define SYSTEM_TASK_STACKSIZE         (2* configMINIMAL_STACK_SIZE)
