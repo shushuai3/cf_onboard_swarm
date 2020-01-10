@@ -16,7 +16,6 @@ static const uint64_t antennaDelay = (ANTENNA_OFFSET*499.2e6*128)/299792458.0; /
 
 typedef struct {
   uint16_t distance[NumUWB];
-  int16_t rangeNumPerSec;
 } twrState_t;
 static twrState_t state;
 
@@ -28,10 +27,8 @@ static dwTime_t answer_rx;
 static dwTime_t final_tx;
 static dwTime_t final_rx;
 
-bool taskDelayForTransMode;
 static packet_t txPacket;
 static bool rangingOk;
-static uint8_t succededRanging, tdmaSynchronized; //dont know why
 
 // Communication logic between each UWB
 static bool current_mode_trans;
@@ -58,7 +55,6 @@ static void txcallback(dwDevice_t *dev)
         if( (current_receiveID == 0) || (current_receiveID-1 == selfID) ){
           // current_receiveID = current_receiveID;
           current_mode_trans = false;
-          taskDelayForTransMode = false;
           dwIdle(dev);
           dwSetReceiveWaitTimeout(dev, 10000);
           dwNewReceive(dev);
@@ -82,8 +78,6 @@ static void txcallback(dwDevice_t *dev)
   }
 }
 
-static uint32_t range_tick = 0;
-static int16_t  range_count= 0;
 static void rxcallback(dwDevice_t *dev) {
   dwTime_t arival = { .full=0 };
   int dataLength = dwGetDataLength(dev);
@@ -95,7 +89,6 @@ static void rxcallback(dwDevice_t *dev) {
   if (rxPacket.destAddress != selfAddress) {
     if(current_mode_trans){
       current_mode_trans = false;
-      taskDelayForTransMode = false;
       dwIdle(dev);
       dwSetReceiveWaitTimeout(dev, 10000);
     }
@@ -138,14 +131,6 @@ static void rxcallback(dwDevice_t *dev) {
         tprop = tprop_ctn / LOCODECK_TS_FREQ;
         state.distance[current_receiveID] = (uint16_t)(1000 * (SPEED_OF_LIGHT * tprop + 1));
         rangingOk = true;
-
-        range_count++;
-        if(xTaskGetTickCount()>range_tick+1000)
-        {
-          range_tick = xTaskGetTickCount();
-          state.rangeNumPerSec = range_count;
-          range_count = 0;  
-        }
 
         lpsTwrTagReportPayload_t *report2 = (lpsTwrTagReportPayload_t *)(txPacket.payload+2);
         txPacket.payload[LPS_TWR_TYPE] = LPS_TWR_REPORT+1;
@@ -207,17 +192,9 @@ static void rxcallback(dwDevice_t *dev) {
         tprop = tprop_ctn / LOCODECK_TS_FREQ;
         state.distance[(uint8_t)(rxPacket.sourceAddress & 0xFF)] = (uint16_t)(1000 * (SPEED_OF_LIGHT * tprop + 1));
         rangingOk = true;
-        range_count++;
-        if(xTaskGetTickCount()>range_tick+1000)
-        {
-          range_tick = xTaskGetTickCount();
-          state.rangeNumPerSec = range_count;
-          range_count = 0;  
-        }
         uint8_t fromID = (uint8_t)(rxPacket.sourceAddress & 0xFF);
         if( selfID == fromID + 1 || selfID == 0 ){
           current_mode_trans = true;
-          taskDelayForTransMode = true;
           dwIdle(dev);
           dwSetReceiveWaitTimeout(dev, 1000);
           if(selfID == NumUWB-1)
@@ -261,7 +238,6 @@ static uint32_t twrTagOnEvent(dwDevice_t *dev, uwbEvent_t event)
     case eventReceiveFailed:
       if (current_mode_trans==true)
       {
-        if (tdmaSynchronized==false) succededRanging++; 
         txPacket.payload[LPS_TWR_TYPE] = LPS_TWR_POLL;
         txPacket.payload[LPS_TWR_SEQ] = 0;
         txPacket.sourceAddress = selfAddress;
@@ -277,7 +253,6 @@ static uint32_t twrTagOnEvent(dwDevice_t *dev, uwbEvent_t event)
         {
           if(checkTurn == true){
             current_mode_trans = true;
-            taskDelayForTransMode = true;
             dwIdle(dev);
             dwSetReceiveWaitTimeout(dev, 1000);
             txPacket.payload[LPS_TWR_TYPE] = LPS_TWR_POLL;
@@ -326,19 +301,16 @@ static void twrTagInit(dwDevice_t *dev)
   {
     current_receiveID = NumUWB-1;
     current_mode_trans = true;
-    taskDelayForTransMode = true;    
     dwSetReceiveWaitTimeout(dev, 1000);
   }
   else
   {
     // current_receiveID = 0;
     current_mode_trans = false;
-    taskDelayForTransMode = false;
     dwSetReceiveWaitTimeout(dev, 10000);
   }
 
   checkTurn = false;
-  tdmaSynchronized = false;
   rangingOk = false;
 }
 
@@ -385,5 +357,4 @@ LOG_ADD(LOG_UINT16, distance1, &state.distance[1])
 LOG_ADD(LOG_UINT16, distance2, &state.distance[2])
 LOG_ADD(LOG_UINT16, distance3, &state.distance[3])
 LOG_ADD(LOG_UINT16, distance4, &state.distance[4])
-LOG_ADD(LOG_INT16, rangeNum0, &state.rangeNumPerSec)
 LOG_GROUP_STOP(ranging)

@@ -14,7 +14,6 @@
 #define LPS_TWR_SEQ   1
 #define LPS_TWR_ENABLE
 
-extern bool taskDelayForTransMode;
 extern uwbAlgorithm_t uwbTwrTagAlgorithm;
 
 typedef struct {
