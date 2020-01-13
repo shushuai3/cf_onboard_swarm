@@ -153,16 +153,18 @@ static void rxcallback(dwDevice_t *dev) {
         tprop_ctn = ((tround1*tround2) - (treply1*treply2)) / (tround1 + tround2 + treply1 + treply2);
         tprop = tprop_ctn / LOCODECK_TS_FREQ;
         uint16_t calcDist = (uint16_t)(1000 * (SPEED_OF_LIGHT * tprop + 1));
-        uint16_t medianDist = median_filter_3(median_data[current_receiveID].distance_history);
-        if (ABS(medianDist-calcDist)>0.5)
-          state.distance[current_receiveID] = medianDist;
-        else
-          state.distance[current_receiveID] = calcDist;
-        median_data[current_receiveID].index_inserting++;
-        if(median_data[current_receiveID].index_inserting==3)
-          median_data[current_receiveID].index_inserting = 0;
-        median_data[current_receiveID].distance_history[median_data[current_receiveID].index_inserting] = calcDist;        
+        if(calcDist!=0){
+          uint16_t medianDist = median_filter_3(median_data[current_receiveID].distance_history);
+          if (ABS(medianDist-calcDist)>0.5)
+            state.distance[current_receiveID] = medianDist;
+          else
+            state.distance[current_receiveID] = calcDist;
+          median_data[current_receiveID].index_inserting++;
+          if(median_data[current_receiveID].index_inserting==3)
+            median_data[current_receiveID].index_inserting = 0;
+          median_data[current_receiveID].distance_history[median_data[current_receiveID].index_inserting] = calcDist;        
         rangingOk = true;
+        }
 
         lpsTwrTagReportPayload_t *report2 = (lpsTwrTagReportPayload_t *)(txPacket.payload+2);
         txPacket.payload[LPS_TWR_TYPE] = LPS_TWR_REPORT+1;
