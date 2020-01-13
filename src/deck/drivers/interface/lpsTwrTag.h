@@ -20,6 +20,7 @@ typedef struct {
   uint8_t pollRx[5];
   uint8_t answerTx[5];
   uint8_t finalRx[5];
+  uint16_t reciprocalDistance;
 } __attribute__((packed)) lpsTwrTagReportPayload_t;
 
 #endif // __LPS_TWR_TAG_H__

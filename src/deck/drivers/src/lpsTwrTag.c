@@ -8,7 +8,7 @@
 
 #define ANTENNA_OFFSET 154.6   // In meter
 #define basicAddr 0xbccf000000000000
-#define NumUWB 5
+#define NumUWB 3
 // Define: id = last_number_of_address - 5
 static uint8_t selfID;
 static locoAddress_t selfAddress;
@@ -36,6 +36,29 @@ static uint8_t current_receiveID;
 
 static bool checkTurn;
 static uint32_t checkTurnTick = 0;
+
+// Median filter for distance ranging (size=3)
+typedef struct {
+  uint16_t distance_history[3];
+  uint8_t index_inserting;
+} median_data_t;
+static median_data_t median_data[NumUWB];
+
+static uint16_t median_filter_3(uint16_t *data)
+{
+  uint16_t middle;
+  if ((data[0] <= data[1]) && (data[0] <= data[2])){
+    middle = (data[1] <= data[2]) ? data[1] : data[2];
+  }
+  else if((data[1] <= data[0]) && (data[1] <= data[2])){
+    middle = (data[0] <= data[2]) ? data[0] : data[2];
+  }
+  else{
+    middle = (data[0] <= data[1]) ? data[0] : data[1];
+  }
+  return middle;
+}
+#define ABS(a) ((a) > 0 ? (a) : -(a))
 
 static void txcallback(dwDevice_t *dev)
 {
@@ -129,15 +152,22 @@ static void rxcallback(dwDevice_t *dev) {
         treply2 = final_tx.low32 - answer_rx.low32;
         tprop_ctn = ((tround1*tround2) - (treply1*treply2)) / (tround1 + tround2 + treply1 + treply2);
         tprop = tprop_ctn / LOCODECK_TS_FREQ;
-        state.distance[current_receiveID] = (uint16_t)(1000 * (SPEED_OF_LIGHT * tprop + 1));
+        uint16_t calcDist = (uint16_t)(1000 * (SPEED_OF_LIGHT * tprop + 1));
+        uint16_t medianDist = median_filter_3(median_data[current_receiveID].distance_history);
+        if (ABS(medianDist-calcDist)>0.5)
+          state.distance[current_receiveID] = medianDist;
+        else
+          state.distance[current_receiveID] = calcDist;
+        median_data[current_receiveID].index_inserting++;
+        if(median_data[current_receiveID].index_inserting==3)
+          median_data[current_receiveID].index_inserting = 0;
+        median_data[current_receiveID].distance_history[median_data[current_receiveID].index_inserting] = calcDist;        
         rangingOk = true;
 
         lpsTwrTagReportPayload_t *report2 = (lpsTwrTagReportPayload_t *)(txPacket.payload+2);
         txPacket.payload[LPS_TWR_TYPE] = LPS_TWR_REPORT+1;
         txPacket.payload[LPS_TWR_SEQ] = rxPacket.payload[LPS_TWR_SEQ];
-        memcpy(&report2->pollRx, &poll_tx, 5);
-        memcpy(&report2->answerTx, &answer_rx, 5);
-        memcpy(&report2->finalRx, &final_tx, 5);
+        report2->reciprocalDistance = calcDist;
         dwNewTransmit(dev);
         dwSetData(dev, (uint8_t*)&txPacket, MAC802154_HEADER_LENGTH+2+sizeof(lpsTwrTagReportPayload_t));
         dwWaitForResponse(dev, true);
@@ -180,17 +210,20 @@ static void rxcallback(dwDevice_t *dev) {
       case (LPS_TWR_REPORT+1):
       {
         lpsTwrTagReportPayload_t *report2 = (lpsTwrTagReportPayload_t *)(rxPacket.payload+2);
-        double tround1, treply1, treply2, tround2, tprop_ctn, tprop;
-        memcpy(&poll_tx, &report2->pollRx, 5);
-        memcpy(&answer_rx, &report2->answerTx, 5);
-        memcpy(&final_tx, &report2->finalRx, 5);
-        tround1 = answer_rx.low32 - poll_tx.low32;
-        treply1 = answer_tx.low32 - poll_rx.low32;
-        tround2 = final_rx.low32 - answer_tx.low32;
-        treply2 = final_tx.low32 - answer_rx.low32;
-        tprop_ctn = ((tround1*tround2) - (treply1*treply2)) / (tround1 + tround2 + treply1 + treply2);
-        tprop = tprop_ctn / LOCODECK_TS_FREQ;
-        state.distance[(uint8_t)(rxPacket.sourceAddress & 0xFF)] = (uint16_t)(1000 * (SPEED_OF_LIGHT * tprop + 1));
+        uint8_t rangingID = (uint8_t)(rxPacket.sourceAddress & 0xFF);
+        if((report2->reciprocalDistance)!=0){
+          // received distance has large noise
+          uint16_t calcDist = report2->reciprocalDistance;
+          uint16_t medianDist = median_filter_3(median_data[rangingID].distance_history);
+          if (ABS(medianDist-calcDist)>0.5)
+            state.distance[rangingID] = medianDist;
+          else
+            state.distance[rangingID] = calcDist;
+          median_data[rangingID].index_inserting++;
+          if(median_data[rangingID].index_inserting==3)
+            median_data[rangingID].index_inserting = 0;
+          median_data[rangingID].distance_history[median_data[rangingID].index_inserting] = calcDist; 
+        }
         rangingOk = true;
         uint8_t fromID = (uint8_t)(rxPacket.sourceAddress & 0xFF);
         if( selfID == fromID + 1 || selfID == 0 ){
@@ -308,6 +341,10 @@ static void twrTagInit(dwDevice_t *dev)
     // current_receiveID = 0;
     current_mode_trans = false;
     dwSetReceiveWaitTimeout(dev, 10000);
+  }
+
+  for (int i = 0; i < NumUWB; i++) {
+    median_data[i].index_inserting = 0;
   }
 
   checkTurn = false;
