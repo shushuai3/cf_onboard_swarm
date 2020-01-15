@@ -62,6 +62,8 @@ static arm_matrix_instance_f32 HTm = {STATE_DIM_rl, 1, HTd};
 static float PHTd[STATE_DIM_rl * 1];
 static arm_matrix_instance_f32 PHTm = {STATE_DIM_rl, 1, PHTd};
 
+static bool fullConnect = false; // a flag for control (fly or not)
+static int8_t connectCount = 0; // watchdog for detecting the connection
 
 static float vxj, vyj, rj; // receive vx, vy, gz and distance
 static float vxi, vyi, ri; // self vx, vy, gz
@@ -107,6 +109,7 @@ void relativeLocoTask(void* arg)
     vTaskDelay(10);
     for (int n=0; n<NumUWB; n++) {
       if (twrGetSwarmInfo(n, &dij, &vxj, &vyj, &rj)){
+        connectCount = 0;
         estimatorKalmanGetSwarmInfo(&vxi, &vyi, &ri);
         if(relaVar[n].receiveFlag){
           uint32_t osTick = xTaskGetTickCount();
@@ -116,8 +119,13 @@ void relativeLocoTask(void* arg)
         }else{
           relaVar[n].oldTimetick = xTaskGetTickCount();
           relaVar[n].receiveFlag = true;
+          fullConnect = true;
         }
       }
+    }
+    connectCount++;
+    if(connectCount>100){
+      fullConnect = false; // disable control if there is no ranging after 1 second
     }
   }
 }
@@ -191,6 +199,13 @@ void relativeEKF(int n, float vxi, float vyi, float ri, float vxj, float vyj, fl
   mat_trans(&tmpNN1m, &tmpNN2m); // (KH - I)'
   mat_mult(&tmpNN1m, &Pm, &tmpNN3m); // (KH - I)*P
   mat_mult(&tmpNN3m, &tmpNN2m, &Pm); // (KH - I)*P*(KH - I)'
+}
+
+bool relativeInfoRead(void){
+  if(fullConnect)
+    return true;
+  else
+    return false;    
 }
 
 LOG_GROUP_START(relative_pos)
