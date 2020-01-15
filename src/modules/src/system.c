@@ -65,6 +65,7 @@
 #include "deck.h"
 #include "extrx.h"
 #include "app.h"
+#include "relative_localization.h"
 
 /* Private variable */
 static bool selftestPassed;
@@ -171,6 +172,7 @@ void systemTask(void *arg)
   deckInit();
   estimator = deckGetRequiredEstimator();
   stabilizerInit(estimator);
+  relativeLocoInit();
   if (deckGetRequiredLowInterferenceRadioMode() && platformConfigPhysicalLayoutAntennasAreClose())
   {
     platformSetLowInterferenceRadioMode();

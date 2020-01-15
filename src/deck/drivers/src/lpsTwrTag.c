@@ -5,10 +5,10 @@
 #include "FreeRTOS.h"
 #include "task.h"
 #include "configblock.h"
+#include "estimator_kalman.h"
 
 #define ANTENNA_OFFSET 154.6   // In meter
 #define basicAddr 0xbccf000000000000
-#define NumUWB 3
 // Define: id = last_number_of_address - 5
 static uint8_t selfID;
 static locoAddress_t selfAddress;
@@ -16,8 +16,12 @@ static const uint64_t antennaDelay = (ANTENNA_OFFSET*499.2e6*128)/299792458.0; /
 
 typedef struct {
   uint16_t distance[NumUWB];
-} twrState_t;
-static twrState_t state;
+  float_t vx[NumUWB];
+  float_t vy[NumUWB];
+  float_t gz[NumUWB];
+  bool refresh[NumUWB];
+} swarmInfo_t;
+static swarmInfo_t state;
 
 // Timestamps for ranging
 static dwTime_t poll_tx;
@@ -155,7 +159,7 @@ static void rxcallback(dwDevice_t *dev) {
         uint16_t calcDist = (uint16_t)(1000 * (SPEED_OF_LIGHT * tprop + 1));
         if(calcDist!=0){
           uint16_t medianDist = median_filter_3(median_data[current_receiveID].distance_history);
-          if (ABS(medianDist-calcDist)>0.5)
+          if (ABS(medianDist-calcDist)>500)
             state.distance[current_receiveID] = medianDist;
           else
             state.distance[current_receiveID] = calcDist;
@@ -163,13 +167,18 @@ static void rxcallback(dwDevice_t *dev) {
           if(median_data[current_receiveID].index_inserting==3)
             median_data[current_receiveID].index_inserting = 0;
           median_data[current_receiveID].distance_history[median_data[current_receiveID].index_inserting] = calcDist;        
-        rangingOk = true;
+          rangingOk = true;
+          state.vx[current_receiveID] = report->selfVx;
+          state.vy[current_receiveID] = report->selfVy;
+          state.gz[current_receiveID] = report->selfGz;
+          state.refresh[current_receiveID] = true;
         }
 
         lpsTwrTagReportPayload_t *report2 = (lpsTwrTagReportPayload_t *)(txPacket.payload+2);
         txPacket.payload[LPS_TWR_TYPE] = LPS_TWR_REPORT+1;
         txPacket.payload[LPS_TWR_SEQ] = rxPacket.payload[LPS_TWR_SEQ];
         report2->reciprocalDistance = calcDist;
+        estimatorKalmanGetSwarmInfo(&report2->selfVx, &report2->selfVy, &report2->selfGz);
         dwNewTransmit(dev);
         dwSetData(dev, (uint8_t*)&txPacket, MAC802154_HEADER_LENGTH+2+sizeof(lpsTwrTagReportPayload_t));
         dwWaitForResponse(dev, true);
@@ -203,6 +212,7 @@ static void rxcallback(dwDevice_t *dev) {
         memcpy(&report->pollRx, &poll_rx, 5);
         memcpy(&report->answerTx, &answer_tx, 5);
         memcpy(&report->finalRx, &final_rx, 5);
+        estimatorKalmanGetSwarmInfo(&report->selfVx, &report->selfVy, &report->selfGz);
         dwNewTransmit(dev);
         dwSetData(dev, (uint8_t*)&txPacket, MAC802154_HEADER_LENGTH+2+sizeof(lpsTwrTagReportPayload_t));
         dwWaitForResponse(dev, true);
@@ -217,7 +227,7 @@ static void rxcallback(dwDevice_t *dev) {
           // received distance has large noise
           uint16_t calcDist = report2->reciprocalDistance;
           uint16_t medianDist = median_filter_3(median_data[rangingID].distance_history);
-          if (ABS(medianDist-calcDist)>0.5)
+          if (ABS(medianDist-calcDist)>500)
             state.distance[rangingID] = medianDist;
           else
             state.distance[rangingID] = calcDist;
@@ -225,6 +235,10 @@ static void rxcallback(dwDevice_t *dev) {
           if(median_data[rangingID].index_inserting==3)
             median_data[rangingID].index_inserting = 0;
           median_data[rangingID].distance_history[median_data[rangingID].index_inserting] = calcDist; 
+          state.vx[rangingID] = report2->selfVx;
+          state.vy[rangingID] = report2->selfVy;
+          state.gz[rangingID] = report2->selfGz;
+          state.refresh[rangingID] = true;
         }
         rangingOk = true;
         uint8_t fromID = (uint8_t)(rxPacket.sourceAddress & 0xFF);
@@ -347,6 +361,7 @@ static void twrTagInit(dwDevice_t *dev)
 
   for (int i = 0; i < NumUWB; i++) {
     median_data[i].index_inserting = 0;
+    state.refresh[i] = false;
   }
 
   checkTurn = false;
@@ -379,6 +394,19 @@ static uint8_t getActiveAnchorIdList(uint8_t unorderedAnchorList[], const int ma
       count++;
   }
   return count;
+}
+
+bool twrGetSwarmInfo(int robNum, uint16_t* range, float* vx, float* vy, float* gyroZ) {
+  if(state.refresh[robNum]==true) {
+    state.refresh[robNum] = false;
+    *range = state.distance[robNum];
+    *vx = state.vx[robNum];
+    *vy = state.vy[robNum];
+    *gyroZ = state.gz[robNum];
+    return(true);
+  }else {
+    return(false);
+  }
 }
 
 uwbAlgorithm_t uwbTwrTagAlgorithm = {

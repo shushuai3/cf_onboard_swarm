@@ -702,6 +702,12 @@ void estimatorKalmanGetEstimatedRot(float * rotationMatrix) {
   memcpy(rotationMatrix, coreData.R, 9*sizeof(float));
 }
 
+void estimatorKalmanGetSwarmInfo(float* vx, float* vy, float* gyroZ) {
+  *vx = swarmVx;
+  *vy = swarmVy;
+  *gyroZ = swarmGz;
+}
+
 // Temporary development groups
 LOG_GROUP_START(kalman_states)
   LOG_ADD(LOG_FLOAT, ox, &coreData.S[KC_STATE_X])
