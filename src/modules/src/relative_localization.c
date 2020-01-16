@@ -180,6 +180,7 @@ void relativeEKF(int n, float vxi, float vyi, float ri, float vxj, float vyj, fl
   yij = relaVar[n].S[STATE_rlY];
   float distPred = arm_sqrt(xij*xij+yij*yij)+0.0001f;
   float distMeas = (float)(dij/1000);
+  distMeas = distMeas - (0.048f*distMeas + 0.65f); // UWB biad model
   h[0] = xij/distPred;
   h[1] = yij/distPred;
   h[2] = 0;

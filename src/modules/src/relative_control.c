@@ -4,9 +4,14 @@
 #include "commander.h"
 #include "relative_localization.h"
 #include "num.h"
+#include "param.h"
 #include "debug.h"
+#include <stdlib.h>
 
 static bool isInit;
+static bool onGround = true;
+static uint8_t keepFlying = 0;
+static setpoint_t setpoint;
 
 // static float rl_x_p = 0.5f;
 // static float rl_x_i = 0.0000f;
@@ -33,11 +38,26 @@ static void setHoverSetpoint(setpoint_t *setpoint, float vx, float vy, float z, 
   setpoint->velocity.x = vx;
   setpoint->velocity.y = vy;
   setpoint->velocity_body = true;
+  commanderSetSetpoint(setpoint, 3);
+}
+
+static void flyRandomIn1meter(void){
+  float_t randomYaw = (rand() / (float)RAND_MAX) * 6.28f; // 0-2pi rad
+  float_t randomVel = (rand() / (float)RAND_MAX); // 0-1 m/s
+  float_t vxBody = randomVel * cosf(randomYaw);
+  float_t vyBody = randomVel * sinf(randomYaw);
+  for (int i=1; i<100; i++) {
+    setHoverSetpoint(&setpoint, vxBody, vyBody, 0.5, 0);
+    vTaskDelay(M2T(10));
+  }
+  for (int i=1; i<100; i++) {
+    setHoverSetpoint(&setpoint, -vxBody, -vyBody, 0.5, 0);
+    vTaskDelay(M2T(10));
+  }
 }
 
 void relativeControlTask(void* arg)
 {
-  static setpoint_t setpoint;
   systemWaitStart();
   // static float PreErr_rl_x = 0;
   // static float PreErr_rl_y = 0;
@@ -79,27 +99,28 @@ void relativeControlTask(void* arg)
     //     PreErr_rl_y = err_rl_y;
 
         // setHoverSetpoint(&setpoint, pid_vx, pid_vy, 0.4, 0);
-        static bool onGround = true;
-        static bool landing = true;
-        if(relativeInfoRead()){
+        if(relativeInfoRead() && keepFlying){
+          // take off
           if(onGround){
-            for (int i=0; i<10; i++) {
-              setHoverSetpoint(&setpoint, 0, 0, 0.5, 0);
-              commanderSetSetpoint(&setpoint, 3);
+            for (int i=0; i<5; i++) {
+              setHoverSetpoint(&setpoint, 0, 0, 0.3f, 0);
               vTaskDelay(M2T(100));
             }
             onGround = false;
           }
-          setHoverSetpoint(&setpoint, 0, 0, 0.5, 0);
-          commanderSetSetpoint(&setpoint, 3);
-        }else{ // landing procedure
-          if(landing && (!onGround)){
+
+          // control loop
+          // setHoverSetpoint(&setpoint, 0, 0, 0.5, 0); // hover
+          flyRandomIn1meter(); // random flight
+
+        }else{
+          // landing procedure
+          if(!onGround){
             for (int i=1; i<5; i++) {
-              setHoverSetpoint(&setpoint, 0, 0, 0.5-i*0.1, 0);
-              commanderSetSetpoint(&setpoint, 3);
-              vTaskDelay(M2T(100));
+              setHoverSetpoint(&setpoint, 0, 0, 0.3f-(float)i*0.05f, 0);
+              vTaskDelay(M2T(10));
             }
-            landing = false;
+            onGround = true;
           } 
         }
   }
@@ -112,3 +133,7 @@ void relativeControlInit(void)
   xTaskCreate(relativeControlTask,"relative_Control",2*configMINIMAL_STACK_SIZE, NULL,3,NULL );
   isInit = true;
 }
+
+PARAM_GROUP_START(relative_ctrl)
+PARAM_ADD(PARAM_UINT8, keepFlying, &keepFlying)
+PARAM_GROUP_STOP(relative_ctrl)
