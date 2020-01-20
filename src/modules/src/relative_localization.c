@@ -25,22 +25,6 @@ static float Ruwb = 3.5f; // ranging deviation
 static float InitCovPos = 1000.0f;
 static float InitCovYawRate = 1.0f;
 
-typedef enum {
-  STATE_rlX, STATE_rlY, STATE_rlYaw, STATE_DIM_rl
-} relative_stateIdx_t;
-
-typedef enum
-{
-  INPUT_vxi, INPUT_vyi, INPUT_ri, INPUT_vxj, INPUT_vyj, INPUT_rj, INPUT_DIM
-} relative_inputIdx_t;
-
-typedef struct
-{
-  float S[STATE_DIM_rl];
-  float P[STATE_DIM_rl][STATE_DIM_rl];
-  uint32_t oldTimetick;
-  bool receiveFlag;
-} relaVariable_t;
 static relaVariable_t relaVar[NumUWB];
 
 static float A[STATE_DIM_rl][STATE_DIM_rl];
@@ -202,9 +186,15 @@ void relativeEKF(int n, float vxi, float vyi, float ri, float vxj, float vyj, fl
   mat_mult(&tmpNN3m, &tmpNN2m, &Pm); // (KH - I)*P*(KH - I)'
 }
 
-bool relativeInfoRead(void){
-  if(fullConnect)
+bool relativeInfoRead(float_t* relaVarParam){
+  if(fullConnect){
+    for(int i=0; i<NumUWB; i++){
+      *(relaVarParam + i*STATE_DIM_rl + 0) = relaVar[i].S[STATE_rlX];
+      *(relaVarParam + i*STATE_DIM_rl + 1) = relaVar[i].S[STATE_rlY];
+      *(relaVarParam + i*STATE_DIM_rl + 2) = relaVar[i].S[STATE_rlYaw];
+    }   
     return true;
+  }
   else
     return false;    
 }
