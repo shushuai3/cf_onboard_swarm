@@ -52,6 +52,7 @@ static int8_t connectCount = 0; // watchdog for detecting the connection
 static float vxj, vyj, rj; // receive vx, vy, gz and distance
 static float vxi, vyi, ri; // self vx, vy, gz
 static uint16_t dij; // distance between self i and other j
+static float hi, hj; // height of robot i and j
 
 static inline void mat_trans(const arm_matrix_instance_f32 * pSrc, arm_matrix_instance_f32 * pDst)
 { configASSERT(ARM_MATH_SUCCESS == arm_mat_trans_f32(pSrc, pDst)); }
@@ -92,14 +93,14 @@ void relativeLocoTask(void* arg)
   while(1) {
     vTaskDelay(10);
     for (int n=0; n<NumUWB; n++) {
-      if (twrGetSwarmInfo(n, &dij, &vxj, &vyj, &rj)){
+      if (twrGetSwarmInfo(n, &dij, &vxj, &vyj, &rj, &hj)){
         connectCount = 0;
-        estimatorKalmanGetSwarmInfo(&vxi, &vyi, &ri);
+        estimatorKalmanGetSwarmInfo(&vxi, &vyi, &ri, &hi);
         if(relaVar[n].receiveFlag){
           uint32_t osTick = xTaskGetTickCount();
           float dtEKF = (float)(osTick - relaVar[n].oldTimetick)/configTICK_RATE_HZ;
           relaVar[n].oldTimetick = osTick;
-          relativeEKF(n, vxi, vyi, ri, vxj, vyj, rj, dij, dtEKF);
+          relativeEKF(n, vxi, vyi, ri, hi, vxj, vyj, rj, hj, dij, dtEKF);
         }else{
           relaVar[n].oldTimetick = xTaskGetTickCount();
           relaVar[n].receiveFlag = true;
@@ -114,7 +115,7 @@ void relativeLocoTask(void* arg)
   }
 }
 
-void relativeEKF(int n, float vxi, float vyi, float ri, float vxj, float vyj, float rj, uint16_t dij, float dt)
+void relativeEKF(int n, float vxi, float vyi, float ri, float hi, float vxj, float vyj, float rj, float hj, uint16_t dij, float dt)
 {
   // some preprocessing
   arm_matrix_instance_f32 Pm = {STATE_DIM_rl, STATE_DIM_rl, (float *)relaVar[n].P};
@@ -162,7 +163,7 @@ void relativeEKF(int n, float vxi, float vyi, float ri, float vxj, float vyj, fl
 
   xij = relaVar[n].S[STATE_rlX];
   yij = relaVar[n].S[STATE_rlY];
-  float distPred = arm_sqrt(xij*xij+yij*yij)+0.0001f;
+  float distPred = arm_sqrt(xij*xij+yij*yij+(hi-hj)*(hi-hj))+0.0001f;
   float distMeas = (float)(dij/1000);
   distMeas = distMeas - (0.048f*distMeas + 0.65f); // UWB biad model
   h[0] = xij/distPred;

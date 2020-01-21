@@ -21,6 +21,6 @@ typedef struct
 
 void relativeLocoInit(void);
 void relativeLocoTask(void* arg);
-void relativeEKF(int n, float vxi, float vyi, float ri, float vxj, float vyj, float rj, uint16_t dij, float dt);
+void relativeEKF(int n, float vxi, float vyi, float ri, float hi, float vxj, float vyj, float rj, float hj, uint16_t dij, float dt);
 bool relativeInfoRead(float* relaVarParam);
 #endif
