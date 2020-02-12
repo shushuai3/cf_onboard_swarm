@@ -9,6 +9,9 @@
 #include <stdlib.h> // random
 #include "lpsTwrTag.h" // UWBNum
 #include "configblock.h"
+#include "uart2.h"
+#include "log.h"
+#define USE_MONOCAM 0
 
 static bool isInit;
 static bool onGround = true;
@@ -21,6 +24,7 @@ static float_t height;
 static float relaCtrl_p = 2.0f;
 static float relaCtrl_i = 0.0001f;
 static float relaCtrl_d = 0.01f;
+static char c = 0; // monoCam
 
 static void setHoverSetpoint(setpoint_t *setpoint, float vx, float vy, float z, float yawrate)
 {
@@ -50,6 +54,39 @@ static void flyRandomIn1meter(void){
     vTaskDelay(M2T(10));
   }
 }
+
+#if USE_MONOCAM
+static float PreErr_yaw = 0;
+static float IntErr_yaw = 0;
+static uint32_t PreTimeYaw;
+static void flyViaDoor(char camYaw){
+  if(camYaw){
+    float dt = (float)(xTaskGetTickCount()-PreTimeYaw)/configTICK_RATE_HZ;
+    PreTimeYaw = xTaskGetTickCount();
+    if(dt > 1) // skip the first run of the EKF
+      return;
+    // pid control for door flight
+    float err_yaw;
+    if(camYaw>128)
+      err_yaw = -(camYaw - 128 - 64); // 0-128, nominal value = 64
+    else
+      err_yaw = -(camYaw - 64); // 0-128, nominal value = 64
+    float pid_vyaw = 1.0f * err_yaw;
+    float dyaw = (err_yaw - PreErr_yaw) / dt;
+    PreErr_yaw = err_yaw;
+    pid_vyaw += 0.01f * dyaw;
+    IntErr_yaw += err_yaw * dt;
+    pid_vyaw += 0.0001f * constrain(IntErr_yaw, -10.0f, 10.0f);
+    pid_vyaw = constrain(pid_vyaw, -100, 100);  
+    if(camYaw<128)
+      setHoverSetpoint(&setpoint, 1, 0, 0.5f, pid_vyaw); // deg/s
+    else
+      setHoverSetpoint(&setpoint, 0, -0.3f, 0.5f, pid_vyaw); // deg/s
+  }else{
+    setHoverSetpoint(&setpoint, 1.5f, 0, 0.5f, 45);
+  }
+}
+#endif
 
 static float_t targetX;
 static float_t targetY;
@@ -91,10 +128,14 @@ void relativeControlTask(void* arg)
 {
   static uint32_t ctrlTick;
   systemWaitStart();
-  selfID = (uint8_t)(((configblockGetRadioAddress()) & 0x000000000f) - 5);
-  height = (float)selfID*0.1f+0.2f;
+  // height = (float)selfID*0.1f+0.2f;
+  height = 0.5f;
   while(1) {
     vTaskDelay(10);
+#if USE_MONOCAM
+    if(selfID==0)
+      uart2Getchar(&c);
+#endif
     if(relativeInfoRead((float_t *)relaVarInCtrl) && keepFlying){
       // take off
       if(onGround){
@@ -115,7 +156,17 @@ void relativeControlTask(void* arg)
       }
       else
       {
-        formation0asCenter(targetX, targetY);
+#if USE_MONOCAM
+        if(selfID==0)
+          flyViaDoor(c);
+        else
+          formation0asCenter(targetX, targetY);
+#else
+        if(selfID==0)
+          flyRandomIn1meter();
+        else
+          formation0asCenter(targetX, targetY);
+#endif
       }
 
     }else{
@@ -127,7 +178,7 @@ void relativeControlTask(void* arg)
         }
         onGround = true;
       } 
-        }
+    }
   }
 }
 
@@ -135,7 +186,12 @@ void relativeControlInit(void)
 {
   if (isInit)
     return;
-  xTaskCreate(relativeControlTask,"relative_Control",2*configMINIMAL_STACK_SIZE, NULL,3,NULL );
+  selfID = (uint8_t)(((configblockGetRadioAddress()) & 0x000000000f) - 5);
+#if USE_MONOCAM
+  if(selfID==0)
+    uart2Init(115200); // only CF0 has monoCam and usart comm
+#endif
+  xTaskCreate(relativeControlTask,"relative_Control",configMINIMAL_STACK_SIZE, NULL,3,NULL );
   isInit = true;
 }
 
@@ -145,3 +201,7 @@ PARAM_ADD(PARAM_FLOAT, relaCtrl_p, &relaCtrl_p)
 PARAM_ADD(PARAM_FLOAT, relaCtrl_i, &relaCtrl_i)
 PARAM_ADD(PARAM_FLOAT, relaCtrl_d, &relaCtrl_d)
 PARAM_GROUP_STOP(relative_ctrl)
+
+LOG_GROUP_START(mono_cam)
+LOG_ADD(LOG_UINT8, charCam, &c)
+LOG_GROUP_STOP(mono_cam)
