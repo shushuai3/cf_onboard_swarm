@@ -96,36 +96,33 @@ static float IntErr_x = 0;
 static float IntErr_y = 0;
 static uint32_t PreTime;
 static void formation0asCenter(float_t tarX, float_t tarY){
-  if(relaVarInCtrl[0][STATE_rlX]==0)
-    flyRandomIn1meter(); // crazyflie 0 keeps random flight
-  else{
-    float dt = (float)(xTaskGetTickCount()-PreTime)/configTICK_RATE_HZ;
-    PreTime = xTaskGetTickCount();
-    if(dt > 1) // skip the first run of the EKF
-      return;
-    // pid control for formation flight
-    float err_x = -(tarX - relaVarInCtrl[0][STATE_rlX]);
-    float err_y = -(tarY - relaVarInCtrl[0][STATE_rlY]);
-    float pid_vx = relaCtrl_p * err_x;
-    float pid_vy = relaCtrl_p * err_y;
-    float dx = (err_x - PreErr_x) / dt;
-    float dy = (err_y - PreErr_y) / dt;
-    PreErr_x = err_x;
-    PreErr_y = err_y;
-    pid_vx += relaCtrl_d * dx;
-    pid_vy += relaCtrl_d * dy;
-    IntErr_x += err_x * dt;
-    IntErr_y += err_y * dt;
-    pid_vx += relaCtrl_i * constrain(IntErr_x, -0.5, 0.5);
-    pid_vy += relaCtrl_i * constrain(IntErr_y, -0.5, 0.5);
-    pid_vx = constrain(pid_vx, -1, 1);
-    pid_vy = constrain(pid_vy, -1, 1);  
-    setHoverSetpoint(&setpoint, pid_vx, pid_vy, height, 0);
-  }
+  float dt = (float)(xTaskGetTickCount()-PreTime)/configTICK_RATE_HZ;
+  PreTime = xTaskGetTickCount();
+  if(dt > 1) // skip the first run of the EKF
+    return;
+  // pid control for formation flight
+  float err_x = -(tarX - relaVarInCtrl[0][STATE_rlX]);
+  float err_y = -(tarY - relaVarInCtrl[0][STATE_rlY]);
+  float pid_vx = relaCtrl_p * err_x;
+  float pid_vy = relaCtrl_p * err_y;
+  float dx = (err_x - PreErr_x) / dt;
+  float dy = (err_y - PreErr_y) / dt;
+  PreErr_x = err_x;
+  PreErr_y = err_y;
+  pid_vx += relaCtrl_d * dx;
+  pid_vy += relaCtrl_d * dy;
+  IntErr_x += err_x * dt;
+  IntErr_y += err_y * dt;
+  pid_vx += relaCtrl_i * constrain(IntErr_x, -0.5, 0.5);
+  pid_vy += relaCtrl_i * constrain(IntErr_y, -0.5, 0.5);
+  pid_vx = constrain(pid_vx, -1.5f, 1.5f);
+  pid_vy = constrain(pid_vy, -1.5f, 1.5f);  
+  setHoverSetpoint(&setpoint, pid_vx, pid_vy, height, 0);
 }
 
 void relativeControlTask(void* arg)
 {
+  static const float_t targetList[7][STATE_DIM_rl]={{0.0f, 0.0f, 0.0f}, {-1.0f, 0.5f, 0.0f}, {-1.0f, -0.5f, 0.0f}, {-1.0f, -1.5f, 0.0f}, {0.0f, -1.0f, 0.0f}, {0.0f, -1.0f, 0.0f}, {-2.0f, 0.0f, 0.0f}};
   static uint32_t ctrlTick;
   systemWaitStart();
   // height = (float)selfID*0.1f+0.2f;
@@ -149,23 +146,44 @@ void relativeControlTask(void* arg)
 
       // control loop
       // setHoverSetpoint(&setpoint, 0, 0, height, 0); // hover
-      if(xTaskGetTickCount() - ctrlTick < 10000){
+      uint32_t tickInterval = xTaskGetTickCount() - ctrlTick;
+      if( tickInterval < 30000){
         flyRandomIn1meter(); // random flight within first 10 seconds
         targetX = relaVarInCtrl[0][STATE_rlX];
         targetY = relaVarInCtrl[0][STATE_rlY];
       }
       else
       {
+
 #if USE_MONOCAM
         if(selfID==0)
           flyViaDoor(c);
         else
           formation0asCenter(targetX, targetY);
 #else
-        if(selfID==0)
-          flyRandomIn1meter();
-        else
-          formation0asCenter(targetX, targetY);
+        if ( (tickInterval > 30000) && (tickInterval < 50000) ){ // 0-random, other formation
+          if(selfID==0)
+            flyRandomIn1meter();
+          else
+            formation0asCenter(targetX, targetY); 
+        }
+
+        if ( (tickInterval > 50000) && (tickInterval < 70000) ){
+          if(selfID==0)
+            flyRandomIn1meter();
+          else{
+            targetX = -cosf(relaVarInCtrl[0][STATE_rlYaw])*targetList[selfID][STATE_rlX] + sinf(relaVarInCtrl[0][STATE_rlYaw])*targetList[selfID][STATE_rlY];
+            targetY = -sinf(relaVarInCtrl[0][STATE_rlYaw])*targetList[selfID][STATE_rlX] - cosf(relaVarInCtrl[0][STATE_rlYaw])*targetList[selfID][STATE_rlY];
+            formation0asCenter(targetX, targetY); 
+          }
+        }
+
+        if (tickInterval > 70000){
+          if(selfID==0)
+            setHoverSetpoint(&setpoint, 0, 0, height, 0);
+          else
+            formation0asCenter(targetX, targetY);
+        }
 #endif
       }
 
