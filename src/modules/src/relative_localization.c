@@ -23,7 +23,7 @@ static float Qv = 1.0f; // velocity deviation
 static float Qr = 0.7f; // yaw rate deviation
 static float Ruwb = 3.5f; // ranging deviation
 static float InitCovPos = 1000.0f;
-static float InitCovYawRate = 1.0f;
+static float InitCovYaw = 1.0f;
 
 static relaVariable_t relaVar[NumUWB];
 
@@ -83,7 +83,7 @@ void relativeLocoTask(void* arg)
     }
     relaVar[n].P[STATE_rlX][STATE_rlX] = InitCovPos;
     relaVar[n].P[STATE_rlY][STATE_rlY] = InitCovPos;
-    relaVar[n].P[STATE_rlYaw][STATE_rlYaw] = InitCovYawRate;  
+    relaVar[n].P[STATE_rlYaw][STATE_rlYaw] = InitCovYaw;  
     relaVar[n].S[STATE_rlX] = 0;
     relaVar[n].S[STATE_rlY] = 0;
     relaVar[n].S[STATE_rlYaw] = 0;
@@ -212,9 +212,10 @@ LOG_ADD(LOG_FLOAT, rlY2, &relaVar[2].S[STATE_rlY])
 LOG_ADD(LOG_FLOAT, rlYaw2, &relaVar[2].S[STATE_rlYaw])
 LOG_GROUP_STOP(relative_pos)
 
-// PARAM_GROUP_START(relative_pos)
-// PARAM_ADD(PARAM_FLOAT, NoiseFlow, &Qv) // make sure the name is not too long
-// PARAM_ADD(PARAM_FLOAT, initCovX, &Qr)
-// PARAM_ADD(PARAM_FLOAT, initCovY, &InitCovPos)
-// PARAM_ADD(PARAM_FLOAT, NoiseDist, &Ruwb)
-// PARAM_GROUP_STOP(relative_pos)
+PARAM_GROUP_START(arelative_pos)
+PARAM_ADD(PARAM_FLOAT, noiFlow, &Qv) // make sure the name is not too long
+PARAM_ADD(PARAM_FLOAT, noiGyroZ, &Qr)
+PARAM_ADD(PARAM_FLOAT, noiUWB, &Ruwb)
+PARAM_ADD(PARAM_FLOAT, Ppos, &InitCovPos)
+PARAM_ADD(PARAM_FLOAT, Pyaw, &InitCovYaw)
+PARAM_GROUP_STOP(arelative_pos)

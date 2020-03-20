@@ -413,6 +413,11 @@ bool twrGetSwarmInfo(int robNum, uint16_t* range, float* vx, float* vy, float* g
   }
 }
 
+void relativeVel0Read(float_t* vx0, float_t* vy0, int nRob){
+  *vx0 = state.vx[nRob];
+  *vy0 = state.vy[nRob];
+}
+
 uwbAlgorithm_t uwbTwrTagAlgorithm = {
   .init = twrTagInit,
   .onEvent = twrTagOnEvent,

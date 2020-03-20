@@ -13,7 +13,7 @@
 #define LPS_TWR_TYPE  0
 #define LPS_TWR_SEQ   1
 #define LPS_TWR_ENABLE
-#define NumUWB 5
+#define NumUWB 3
 
 extern uwbAlgorithm_t uwbTwrTagAlgorithm;
 
@@ -29,5 +29,5 @@ typedef struct {
 } __attribute__((packed)) lpsTwrTagReportPayload_t;
 
 bool twrGetSwarmInfo(int robNum, uint16_t* range, float* vx, float* vy, float* gyroZ, float* height);
-
+void relativeVel0Read(float* vx0, float* vy0, int nRob);
 #endif // __LPS_TWR_TAG_H__
