@@ -15,7 +15,7 @@
 
 static bool isInit;
 static bool onGround = true;
-static uint8_t keepFlying = 0;
+static bool keepFlying = false;
 static setpoint_t setpoint;
 static float_t relaVarInCtrl[NumUWB][STATE_DIM_rl];
 static uint8_t selfID;
@@ -133,10 +133,16 @@ void relativeControlTask(void* arg)
     if(selfID==0)
       uart2Getchar(&c);
 #endif
-    if(relativeInfoRead((float_t *)relaVarInCtrl) && keepFlying){
+    keepFlying = command_share(selfID, keepFlying);
+    if(relativeInfoRead((float_t *)relaVarInCtrl) && keepFlying && (selfID!=2)){
       // take off
       if(onGround){
         for (int i=0; i<5; i++) {
+          setHoverSetpoint(&setpoint, 0, 0, 0.3f, 0);
+          vTaskDelay(M2T(100));
+        }
+        // unsynchronize
+        for (int i=0; i<10*selfID; i++) {
           setHoverSetpoint(&setpoint, 0, 0, 0.3f, 0);
           vTaskDelay(M2T(100));
         }
@@ -147,7 +153,7 @@ void relativeControlTask(void* arg)
       // control loop
       // setHoverSetpoint(&setpoint, 0, 0, height, 0); // hover
       uint32_t tickInterval = xTaskGetTickCount() - ctrlTick;
-      if( tickInterval < 30000){
+      if( tickInterval < 20000){
         flyRandomIn1meter(); // random flight within first 10 seconds
         targetX = relaVarInCtrl[0][STATE_rlX];
         targetY = relaVarInCtrl[0][STATE_rlY];
@@ -161,7 +167,7 @@ void relativeControlTask(void* arg)
         else
           formation0asCenter(targetX, targetY);
 #else
-        if ( (tickInterval > 30000) && (tickInterval < 50000) ){ // 0-random, other formation
+        if ( (tickInterval > 20000) && (tickInterval < 50000) ){ // 0-random, other formation
           if(selfID==0)
             flyRandomIn1meter();
           else

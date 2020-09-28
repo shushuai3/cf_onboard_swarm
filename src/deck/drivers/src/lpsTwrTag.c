@@ -21,6 +21,7 @@ typedef struct {
   float_t gz[NumUWB];
   float_t h[NumUWB];
   bool refresh[NumUWB];
+  bool keep_flying;
 } swarmInfo_t;
 static swarmInfo_t state;
 
@@ -173,6 +174,8 @@ static void rxcallback(dwDevice_t *dev) {
           state.vy[current_receiveID] = report->selfVy;
           state.gz[current_receiveID] = report->selfGz;
           state.h[current_receiveID]  = report->selfh;
+          if(current_receiveID==0)
+            state.keep_flying = report->keep_flying;
           state.refresh[current_receiveID] = true;
         }
 
@@ -181,6 +184,7 @@ static void rxcallback(dwDevice_t *dev) {
         txPacket.payload[LPS_TWR_SEQ] = rxPacket.payload[LPS_TWR_SEQ];
         report2->reciprocalDistance = calcDist;
         estimatorKalmanGetSwarmInfo(&report2->selfVx, &report2->selfVy, &report2->selfGz, &report2->selfh);
+        report2->keep_flying = state.keep_flying;
         dwNewTransmit(dev);
         dwSetData(dev, (uint8_t*)&txPacket, MAC802154_HEADER_LENGTH+2+sizeof(lpsTwrTagReportPayload_t));
         dwWaitForResponse(dev, true);
@@ -215,6 +219,7 @@ static void rxcallback(dwDevice_t *dev) {
         memcpy(&report->answerTx, &answer_tx, 5);
         memcpy(&report->finalRx, &final_rx, 5);
         estimatorKalmanGetSwarmInfo(&report->selfVx, &report->selfVy, &report->selfGz, &report->selfh);
+        report->keep_flying = state.keep_flying;
         dwNewTransmit(dev);
         dwSetData(dev, (uint8_t*)&txPacket, MAC802154_HEADER_LENGTH+2+sizeof(lpsTwrTagReportPayload_t));
         dwWaitForResponse(dev, true);
@@ -241,6 +246,8 @@ static void rxcallback(dwDevice_t *dev) {
           state.vy[rangingID] = report2->selfVy;
           state.gz[rangingID] = report2->selfGz;
           state.h[rangingID]  = report2->selfh;
+          if(rangingID==0)
+            state.keep_flying = report2->keep_flying;
           state.refresh[rangingID] = true;
         }
         rangingOk = true;
@@ -367,6 +374,7 @@ static void twrTagInit(dwDevice_t *dev)
     state.refresh[i] = false;
   }
 
+  state.keep_flying = false;
   checkTurn = false;
   rangingOk = false;
 }
@@ -410,6 +418,15 @@ bool twrGetSwarmInfo(int robNum, uint16_t* range, float* vx, float* vy, float* g
     return(true);
   }else {
     return(false);
+  }
+}
+
+bool command_share(int RobIDfromControl, bool keep_flying) {
+  if(RobIDfromControl==0){
+    state.keep_flying = keep_flying;
+    return keep_flying;
+  }else{
+    return state.keep_flying;
   }
 }
 
