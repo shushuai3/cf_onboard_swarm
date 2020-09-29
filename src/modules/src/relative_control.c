@@ -18,12 +18,14 @@ static bool onGround = true;
 static bool keepFlying = false;
 static setpoint_t setpoint;
 static float_t relaVarInCtrl[NumUWB][STATE_DIM_rl];
+static float_t inputVarInCtrl[NumUWB][STATE_DIM_rl];
 static uint8_t selfID;
 static float_t height;
 
 static float relaCtrl_p = 2.0f;
 static float relaCtrl_i = 0.0001f;
 static float relaCtrl_d = 0.01f;
+// static float NDI_k = 2.0f;
 static char c = 0; // monoCam
 
 static void setHoverSetpoint(setpoint_t *setpoint, float vx, float vy, float z, float yawrate)
@@ -120,6 +122,19 @@ static void formation0asCenter(float_t tarX, float_t tarY){
   setHoverSetpoint(&setpoint, pid_vx, pid_vy, height, 0);
 }
 
+// static void NDI_formation0asCenter(float_t tarX, float_t tarY){
+//   float err_x = -(tarX - relaVarInCtrl[0][STATE_rlX]);
+//   float err_y = -(tarY - relaVarInCtrl[0][STATE_rlY]);
+//   float rela_yaw = relaVarInCtrl[0][STATE_rlYaw];
+//   float Ru_x = cosf(rela_yaw)*inputVarInCtrl[0][STATE_rlX] - sinf(rela_yaw)*inputVarInCtrl[0][STATE_rlY];
+//   float Ru_y = sinf(rela_yaw)*inputVarInCtrl[0][STATE_rlX] + cosf(rela_yaw)*inputVarInCtrl[0][STATE_rlY];
+//   float ndi_vx = NDI_k*err_x + 0*Ru_x;
+//   float ndi_vy = NDI_k*err_y + 0*Ru_y;
+//   ndi_vx = constrain(ndi_vx, -1.5f, 1.5f);
+//   ndi_vy = constrain(ndi_vy, -1.5f, 1.5f);  
+//   setHoverSetpoint(&setpoint, ndi_vx, ndi_vy, height, 0);
+// }
+
 void relativeControlTask(void* arg)
 {
   static const float_t targetList[7][STATE_DIM_rl]={{0.0f, 0.0f, 0.0f}, {-1.0f, 0.5f, 0.0f}, {-1.0f, -0.5f, 0.0f}, {-1.0f, -1.5f, 0.0f}, {0.0f, -1.0f, 0.0f}, {0.0f, -1.0f, 0.0f}, {-2.0f, 0.0f, 0.0f}};
@@ -134,7 +149,7 @@ void relativeControlTask(void* arg)
       uart2Getchar(&c);
 #endif
     keepFlying = command_share(selfID, keepFlying);
-    if(relativeInfoRead((float_t *)relaVarInCtrl) && keepFlying && (selfID!=2)){
+    if(relativeInfoRead((float_t *)relaVarInCtrl, (float_t *)inputVarInCtrl) && keepFlying){
       // take off
       if(onGround){
         for (int i=0; i<5; i++) {
@@ -171,7 +186,8 @@ void relativeControlTask(void* arg)
           if(selfID==0)
             flyRandomIn1meter();
           else
-            formation0asCenter(targetX, targetY); 
+            formation0asCenter(targetX, targetY);
+            // NDI_formation0asCenter(targetX, targetY);
         }
 
         if ( (tickInterval > 50000) && (tickInterval < 70000) ){

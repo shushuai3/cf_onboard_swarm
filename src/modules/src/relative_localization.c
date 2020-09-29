@@ -26,6 +26,7 @@ static float InitCovPos = 1000.0f;
 static float InitCovYaw = 1.0f;
 
 static relaVariable_t relaVar[NumUWB];
+static float_t inputVar[NumUWB][STATE_DIM_rl];
 
 static float A[STATE_DIM_rl][STATE_DIM_rl];
 static float h[STATE_DIM_rl] = {0};
@@ -101,6 +102,9 @@ void relativeLocoTask(void* arg)
           float dtEKF = (float)(osTick - relaVar[n].oldTimetick)/configTICK_RATE_HZ;
           relaVar[n].oldTimetick = osTick;
           relativeEKF(n, vxi, vyi, ri, hi, vxj, vyj, rj, hj, dij, dtEKF);
+          inputVar[n][STATE_rlX] = vxj;
+          inputVar[n][STATE_rlY] = vyj;
+          inputVar[n][STATE_rlYaw] = rj;
         }else{
           relaVar[n].oldTimetick = xTaskGetTickCount();
           relaVar[n].receiveFlag = true;
@@ -187,12 +191,15 @@ void relativeEKF(int n, float vxi, float vyi, float ri, float hi, float vxj, flo
   mat_mult(&tmpNN3m, &tmpNN2m, &Pm); // (KH - I)*P*(KH - I)'
 }
 
-bool relativeInfoRead(float_t* relaVarParam){
+bool relativeInfoRead(float_t* relaVarParam, float_t* inputVarParam){
   if(fullConnect){
     for(int i=0; i<NumUWB; i++){
       *(relaVarParam + i*STATE_DIM_rl + 0) = relaVar[i].S[STATE_rlX];
       *(relaVarParam + i*STATE_DIM_rl + 1) = relaVar[i].S[STATE_rlY];
       *(relaVarParam + i*STATE_DIM_rl + 2) = relaVar[i].S[STATE_rlYaw];
+      *(inputVarParam + i*STATE_DIM_rl + 0) = inputVar[i][STATE_rlX];
+      *(inputVarParam + i*STATE_DIM_rl + 1) = inputVar[i][STATE_rlY];
+      *(inputVarParam + i*STATE_DIM_rl + 2) = inputVar[i][STATE_rlYaw];
     }   
     return true;
   }
