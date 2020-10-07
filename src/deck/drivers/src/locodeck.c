@@ -452,7 +452,9 @@ static void dwm1000Init(DeckInfo *info)
   #endif
 
   dwSetChannel(dwm, CHANNEL_2);
-  dwUseSmartPower(dwm, true);
+  // dwUseSmartPower(dwm, true);
+  dwUseSmartPower(dwm, false);
+  dwSetTxPower(dwm, 0x1F1F1F1Ful);
   dwSetPreambleCode(dwm, PREAMBLE_CODE_64MHZ_9);
 
   dwSetReceiveWaitTimeout(dwm, DEFAULT_RX_TIMEOUT);
