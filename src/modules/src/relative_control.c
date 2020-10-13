@@ -90,6 +90,7 @@ static void flyViaDoor(char camYaw){
 }
 #endif
 
+#define SIGN(a) ((a>=0)?1:-1)
 static float_t targetX;
 static float_t targetY;
 static float PreErr_x = 0;
@@ -118,7 +119,24 @@ static void formation0asCenter(float_t tarX, float_t tarY){
   pid_vx += relaCtrl_i * constrain(IntErr_x, -0.5, 0.5);
   pid_vy += relaCtrl_i * constrain(IntErr_y, -0.5, 0.5);
   pid_vx = constrain(pid_vx, -1.5f, 1.5f);
-  pid_vy = constrain(pid_vy, -1.5f, 1.5f);  
+  pid_vy = constrain(pid_vy, -1.5f, 1.5f);
+
+  float rep_x = 0.0f;
+  float rep_y = 0.0f;
+  for(uint8_t i=0; i<NumUWB; i++){
+    if(i!=selfID){
+      float dist = relaVarInCtrl[i][STATE_rlX]*relaVarInCtrl[i][STATE_rlX] + relaVarInCtrl[i][STATE_rlY]*relaVarInCtrl[i][STATE_rlY];
+      dist = sqrtf(dist);
+      rep_x += -0.5f * (SIGN(0.5f - dist) + 1) / (abs(relaVarInCtrl[i][STATE_rlX]) + 0.001f) * SIGN(relaVarInCtrl[i][STATE_rlX]);
+      rep_y += -0.5f * (SIGN(0.5f - dist) + 1) / (abs(relaVarInCtrl[i][STATE_rlY]) + 0.001f) * SIGN(relaVarInCtrl[i][STATE_rlY]);
+    }
+  }
+  rep_x = constrain(rep_x, -1.5f, 1.5f);
+  rep_y = constrain(rep_y, -1.5f, 1.5f);
+
+  pid_vx = constrain(pid_vx + rep_x, -1.5f, 1.5f);
+  pid_vy = constrain(pid_vy + rep_y, -1.5f, 1.5f);
+
   setHoverSetpoint(&setpoint, pid_vx, pid_vy, height, 0);
 }
 
