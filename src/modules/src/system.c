@@ -69,6 +69,8 @@
 #include "static_mem.h"
 #include "peer_localization.h"
 #include "cfassert.h"
+#include "relative_localization.h"
+#include "relative_control.h"
 
 #ifndef START_DISARMED
 #define ARM_INIT true
@@ -185,6 +187,8 @@ void systemTask(void *arg)
   deckInit();
   estimator = deckGetRequiredEstimator();
   stabilizerInit(estimator);
+  relativeLocoInit();
+  relativeControlInit();
   if (deckGetRequiredLowInterferenceRadioMode() && platformConfigPhysicalLayoutAntennasAreClose())
   {
     platformSetLowInterferenceRadioMode();

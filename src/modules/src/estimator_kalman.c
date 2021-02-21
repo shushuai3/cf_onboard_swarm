@@ -268,6 +268,11 @@ static const bool useBaroUpdate = true;
 static const bool useBaroUpdate = false;
 #endif
 
+static float swarmVx;
+static float swarmVy;
+static float swarmGz;
+static float swarmh;
+
 static void kalmanTask(void* parameters);
 static bool predictStateForward(uint32_t osTick, float dt);
 static bool updateQueuedMeasurments(const Axis3f *gyro, const uint32_t tick);
@@ -400,6 +405,11 @@ static void kalmanTask(void* parameters) {
     if (doneUpdate)
     {
       kalmanCoreFinalize(&coreData, osTick);
+      swarmVx = coreData.R[0][0] * coreData.S[KC_STATE_PX] + coreData.R[0][1] * coreData.S[KC_STATE_PY] + coreData.R[0][2] * coreData.S[KC_STATE_PZ];
+      swarmVy = coreData.R[1][0] * coreData.S[KC_STATE_PX] + coreData.R[1][1] * coreData.S[KC_STATE_PY] + coreData.R[1][2] * coreData.S[KC_STATE_PZ];
+      //swarmGz = atan2f(2*(q[1]*q[2]+q[0]*q[3]) , q[0]*q[0] + q[1]*q[1] - q[2]*q[2] - q[3]*q[3]);
+      swarmGz = gyroSnapshot.z * DEG_TO_RAD;
+      swarmh  = coreData.S[KC_STATE_Z];
       STATS_CNT_RATE_EVENT(&finalizeCounter);
       if (! kalmanSupervisorIsStateWithinBounds(&coreData)) {
         coreData.resetEstimation = true;
@@ -715,6 +725,13 @@ void estimatorKalmanGetEstimatedRot(float * rotationMatrix) {
   memcpy(rotationMatrix, coreData.R, 9*sizeof(float));
 }
 
+void estimatorKalmanGetSwarmInfo(float* vx, float* vy, float* gyroZ, float* height) {
+  *vx = swarmVx;
+  *vy = swarmVy;
+  *gyroZ = swarmGz;
+  *height = swarmh;
+}
+
 // Temporary development groups
 LOG_GROUP_START(kalman_states)
   LOG_ADD(LOG_FLOAT, ox, &coreData.S[KC_STATE_X])
@@ -723,6 +740,12 @@ LOG_GROUP_START(kalman_states)
   LOG_ADD(LOG_FLOAT, vy, &coreData.S[KC_STATE_PY])
 LOG_GROUP_STOP(kalman_states)
 
+LOG_GROUP_START(swarmstate)
+  LOG_ADD(LOG_FLOAT, swaVx, &swarmVx)
+  LOG_ADD(LOG_FLOAT, swaVy, &swarmVy)
+  LOG_ADD(LOG_FLOAT, swaGz, &swarmGz)
+  LOG_ADD(LOG_FLOAT, swah, &swarmh)
+LOG_GROUP_STOP(swarmstate)
 
 // Stock log groups
 LOG_GROUP_START(kalman)
