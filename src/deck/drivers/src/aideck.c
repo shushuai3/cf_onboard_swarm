@@ -91,52 +91,53 @@ static void Gap8Task(void *param)
     vTaskDelay(10);
     digitalWrite(DECK_GPIO_IO4, HIGH);
     pinMode(DECK_GPIO_IO4, INPUT_PULLUP);
-    static logVarId_t logIdStateEstimateRoll;
-    static logVarId_t logIdStateEstimatePitch;
-    logIdStateEstimateRoll = logGetVarId("stateEstimate", "roll");
-    logIdStateEstimatePitch = logGetVarId("stateEstimate", "pitch");
+    // static logVarId_t logIdStateEstimateRoll;
+    // static logVarId_t logIdStateEstimatePitch;
+    // logIdStateEstimateRoll = logGetVarId("stateEstimate", "roll");
+    // logIdStateEstimatePitch = logGetVarId("stateEstimate", "pitch");
+    // unsigned char packet[24];
+    // packet[0] = 0xfe;
+    // packet[1] = 0xfe;
+    // packet[22] = 0xfe;
+    // packet[23] = 0xfe;
     // Read out the byte the Gap8 sends and immediately send it to the console.
-    unsigned char packet[24];
-    packet[0] = 0xfe;
-    packet[1] = 0xfe;
-    packet[22] = 0xfe;
-    packet[23] = 0xfe;
     while (1)
     {
-        float roll = logGetFloat(logIdStateEstimateRoll);
-        float pitch = logGetFloat(logIdStateEstimatePitch);
-        // uart1GetDataWithDefaultTimeout(&byte);
-        union {
-            float a;
-            unsigned char bytes[4];
-        } thing;
-        thing.a = roll;
-        for(uint16_t i=0; i<4; i++)
-        {
-            packet[2+i] = thing.bytes[i];
-        }
-        thing.a = pitch;
-        for(uint16_t i=0; i<4; i++)
-        {
-            packet[6+i] = thing.bytes[i];
-        }
-        thing.a = roll;
-        for(uint16_t i=0; i<4; i++)
-        {
-            packet[10+i] = thing.bytes[i];
-        }
-        thing.a = pitch;
-        for(uint16_t i=0; i<4; i++)
-        {
-            packet[14+i] = thing.bytes[i];
-        }
-        thing.a = roll;
-        for(uint16_t i=0; i<4; i++)
-        {
-            packet[18+i] = thing.bytes[i];
-        }
-        uart1SendData(24, packet);
-        vTaskDelay(20);
+        uart1GetDataWithDefaultTimeout(&byte);
+        // float roll = logGetFloat(logIdStateEstimateRoll);
+        // float pitch = logGetFloat(logIdStateEstimatePitch);
+        // // uart1GetDataWithDefaultTimeout(&byte);
+        // union {
+        //     float a;
+        //     unsigned char bytes[4];
+        // } thing;
+        // thing.a = roll;
+        // for(uint16_t i=0; i<4; i++)
+        // {
+        //     packet[2+i] = thing.bytes[i];
+        // }
+        // thing.a = pitch;
+        // for(uint16_t i=0; i<4; i++)
+        // {
+        //     packet[6+i] = thing.bytes[i];
+        // }
+        // thing.a = roll;
+        // for(uint16_t i=0; i<4; i++)
+        // {
+        //     packet[10+i] = thing.bytes[i];
+        // }
+        // thing.a = pitch;
+        // for(uint16_t i=0; i<4; i++)
+        // {
+        //     packet[14+i] = thing.bytes[i];
+        // }
+        // thing.a = roll;
+        // for(uint16_t i=0; i<4; i++)
+        // {
+        //     packet[18+i] = thing.bytes[i];
+        // }
+        // uart1SendData(24, packet);
+        // vTaskDelay(20);
     }
 }
 

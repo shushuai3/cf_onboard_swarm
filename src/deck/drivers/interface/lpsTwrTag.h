@@ -13,7 +13,7 @@
 #define LPS_TWR_TYPE  0
 #define LPS_TWR_SEQ   1
 #define LPS_TWR_ENABLE
-#define NumUWB 3
+#define NumUWB 2
 
 extern uwbAlgorithm_t uwbTwrTagAlgorithm;
 

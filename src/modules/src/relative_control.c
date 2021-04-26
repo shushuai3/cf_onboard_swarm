@@ -12,6 +12,7 @@
 #include "uart2.h"
 #include "log.h"
 #include <math.h>
+#include "estimator_kalman.h"
 #define USE_MONOCAM 0
 
 static bool isInit;
@@ -43,9 +44,9 @@ static void setHoverSetpoint(setpoint_t *setpoint, float vx, float vy, float z, 
   commanderSetSetpoint(setpoint, 3);
 }
 
-static void flyRandomIn1meter(void){
+static void flyRandomIn1meter(float vel){
   float randomYaw = (rand() / (float)RAND_MAX) * 6.28f; // 0-2pi rad
-  float randomVel = (rand() / (float)RAND_MAX); // 0-1 m/s
+  float randomVel = vel*(rand() / (float)RAND_MAX); // 0-1 m/s
   float vxBody = randomVel * cosf(randomYaw);
   float vyBody = randomVel * sinf(randomYaw);
   for (int i=1; i<100; i++) {
@@ -122,21 +123,21 @@ static void formation0asCenter(float tarX, float tarY){
   pid_vx = constrain(pid_vx, -1.5f, 1.5f);
   pid_vy = constrain(pid_vy, -1.5f, 1.5f);
 
-  float rep_x = 0.0f;
-  float rep_y = 0.0f;
-  for(uint8_t i=0; i<NumUWB; i++){
-    if(i!=selfID){
-      float dist = relaVarInCtrl[i][STATE_rlX]*relaVarInCtrl[i][STATE_rlX] + relaVarInCtrl[i][STATE_rlY]*relaVarInCtrl[i][STATE_rlY];
-      dist = sqrtf(dist);
-      rep_x += -0.5f * (SIGN(0.5f - dist) + 1) / (abs(relaVarInCtrl[i][STATE_rlX]) + 0.001f) * SIGN(relaVarInCtrl[i][STATE_rlX]);
-      rep_y += -0.5f * (SIGN(0.5f - dist) + 1) / (abs(relaVarInCtrl[i][STATE_rlY]) + 0.001f) * SIGN(relaVarInCtrl[i][STATE_rlY]);
-    }
-  }
-  rep_x = constrain(rep_x, -1.5f, 1.5f);
-  rep_y = constrain(rep_y, -1.5f, 1.5f);
+  // float rep_x = 0.0f;
+  // float rep_y = 0.0f;
+  // for(uint8_t i=0; i<NumUWB; i++){
+  //   if(i!=selfID){
+  //     float dist = relaVarInCtrl[i][STATE_rlX]*relaVarInCtrl[i][STATE_rlX] + relaVarInCtrl[i][STATE_rlY]*relaVarInCtrl[i][STATE_rlY];
+  //     dist = sqrtf(dist);
+  //     rep_x += -0.5f * (SIGN(0.5f - dist) + 1) / (abs(relaVarInCtrl[i][STATE_rlX]) + 0.001f) * SIGN(relaVarInCtrl[i][STATE_rlX]);
+  //     rep_y += -0.5f * (SIGN(0.5f - dist) + 1) / (abs(relaVarInCtrl[i][STATE_rlY]) + 0.001f) * SIGN(relaVarInCtrl[i][STATE_rlY]);
+  //   }
+  // }
+  // rep_x = constrain(rep_x, -1.5f, 1.5f);
+  // rep_y = constrain(rep_y, -1.5f, 1.5f);
 
-  pid_vx = constrain(pid_vx + rep_x, -1.5f, 1.5f);
-  pid_vy = constrain(pid_vy + rep_y, -1.5f, 1.5f);
+  // pid_vx = constrain(pid_vx + rep_x, -1.5f, 1.5f);
+  // pid_vy = constrain(pid_vy + rep_y, -1.5f, 1.5f);
 
   setHoverSetpoint(&setpoint, pid_vx, pid_vy, height, 0);
 }
@@ -156,11 +157,9 @@ static void formation0asCenter(float tarX, float tarY){
 
 void relativeControlTask(void* arg)
 {
-  static const float targetList[7][STATE_DIM_rl]={{0.0f, 0.0f, 0.0f}, {-1.0f, 0.5f, 0.0f}, {-1.0f, -0.5f, 0.0f}, {-1.0f, -1.5f, 0.0f}, {0.0f, -1.0f, 0.0f}, {0.0f, -1.0f, 0.0f}, {-2.0f, 0.0f, 0.0f}};
   static uint32_t ctrlTick;
   systemWaitStart();
   // height = (float)selfID*0.1f+0.2f;
-  height = 0.5f;
   while(1) {
     vTaskDelay(10);
 #if USE_MONOCAM
@@ -171,16 +170,15 @@ void relativeControlTask(void* arg)
     if(relativeInfoRead((float *)relaVarInCtrl, (float *)inputVarInCtrl) && keepFlying){
       // take off
       if(onGround){
-        for (int i=0; i<5; i++) {
-          setHoverSetpoint(&setpoint, 0, 0, 0.3f, 0);
-          vTaskDelay(M2T(100));
-        }
-        // unsynchronize
-        for (int i=0; i<10*selfID; i++) {
+        estimatorKalmanInit(); // reseting kalman filter
+        vTaskDelay(M2T(2000));
+        for (int i=0; i<50; i++) {
           setHoverSetpoint(&setpoint, 0, 0, 0.3f, 0);
           vTaskDelay(M2T(100));
         }
         onGround = false;
+        if(selfID==0)
+          vTaskDelay(M2T(1000));
         ctrlTick = xTaskGetTickCount();
       }
 
@@ -188,7 +186,7 @@ void relativeControlTask(void* arg)
       // setHoverSetpoint(&setpoint, 0, 0, height, 0); // hover
       uint32_t tickInterval = xTaskGetTickCount() - ctrlTick;
       if( tickInterval < 20000){
-        flyRandomIn1meter(); // random flight within first 10 seconds
+        flyRandomIn1meter(1.0f); // random flight within first 10 seconds
         targetX = relaVarInCtrl[0][STATE_rlX];
         targetY = relaVarInCtrl[0][STATE_rlY];
       }
@@ -201,25 +199,57 @@ void relativeControlTask(void* arg)
         else
           formation0asCenter(targetX, targetY);
 #else
-        if ( (tickInterval > 20000) && (tickInterval < 50000) ){ // 0-random, other formation
+        if ( (tickInterval > 20000) && (tickInterval < 30000) ){ // formation
           if(selfID==0)
-            flyRandomIn1meter();
+            flyRandomIn1meter(1.0f);
           else
             formation0asCenter(targetX, targetY);
             // NDI_formation0asCenter(targetX, targetY);
         }
 
-        if ( (tickInterval > 50000) && (tickInterval < 70000) ){
+        static float relaXof2in1=1.0f, relaYof2in1=0.0f;
+        if ( (tickInterval > 30000) && (tickInterval < 180000) ){
           if(selfID==0)
-            flyRandomIn1meter();
+            flyRandomIn1meter(1.0f);
           else{
-            targetX = -cosf(relaVarInCtrl[0][STATE_rlYaw])*targetList[selfID][STATE_rlX] + sinf(relaVarInCtrl[0][STATE_rlYaw])*targetList[selfID][STATE_rlY];
-            targetY = -sinf(relaVarInCtrl[0][STATE_rlYaw])*targetList[selfID][STATE_rlX] - cosf(relaVarInCtrl[0][STATE_rlYaw])*targetList[selfID][STATE_rlY];
+            if ((tickInterval > 30000)&&(tickInterval < 50000))
+            {
+              relaXof2in1 = 1.0f; // in front
+              relaYof2in1 = 0.0f;
+              height = 0.5f;
+            }else if ((tickInterval > 50000)&&(tickInterval < 70000))
+            {
+              relaXof2in1 = 1.0f; // in front
+              relaYof2in1 = 0.0f;
+              height = 0.8f;
+            }else if ((tickInterval > 70000)&&(tickInterval < 90000))
+            {
+              relaXof2in1 = 0.7f; // in front
+              relaYof2in1 = 0.0f;
+              height = 0.8f;
+            }else if ((tickInterval > 90000)&&(tickInterval < 110000))
+            {
+              relaXof2in1 = 0.7f; // in front
+              relaYof2in1 = 0.0f;
+              height = 0.5f;
+            }else if ((tickInterval > 110000)&&(tickInterval < 130000))
+            {
+              relaXof2in1 = 0.7f; // in front
+              relaYof2in1 = 0.0f;
+              height = 0.3f;
+            }else if ((tickInterval > 130000)&&(tickInterval < 150000))
+            {
+              relaXof2in1 = 1.0f; // in front
+              relaYof2in1 = 0.0f;
+              height = 0.3f;
+            }
+            targetX = -cosf(relaVarInCtrl[0][STATE_rlYaw])*relaXof2in1 + sinf(relaVarInCtrl[0][STATE_rlYaw])*relaYof2in1;
+            targetY = -sinf(relaVarInCtrl[0][STATE_rlYaw])*relaXof2in1 - cosf(relaVarInCtrl[0][STATE_rlYaw])*relaYof2in1;
             formation0asCenter(targetX, targetY); 
           }
         }
 
-        if (tickInterval > 70000){
+        if (tickInterval > 180000){
           if(selfID==0)
             setHoverSetpoint(&setpoint, 0, 0, height, 0);
           else
@@ -251,6 +281,7 @@ void relativeControlInit(void)
     uart2Init(115200); // only CF0 has monoCam and usart comm
 #endif
   xTaskCreate(relativeControlTask,"relative_Control",configMINIMAL_STACK_SIZE, NULL,3,NULL );
+  height = 0.5f;
   isInit = true;
 }
 
