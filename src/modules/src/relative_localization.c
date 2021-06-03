@@ -54,7 +54,7 @@ static float vxj, vyj, rj; // receive vx, vy, gz and distance
 static float vxi, vyi, ri; // self vx, vy, gz
 static uint16_t dij; // distance between self i and other j
 static float hi, hj; // height of robot i and j
-static float hij;
+static float hij, dist;
 
 static inline void mat_trans(const arm_matrix_instance_f32 * pSrc, arm_matrix_instance_f32 * pDst)
 { configASSERT(ARM_MATH_SUCCESS == arm_mat_trans_f32(pSrc, pDst)); }
@@ -104,6 +104,7 @@ void relativeLocoTask(void* arg)
           relaVar[n].oldTimetick = osTick;
           relativeEKF(n, vxi, vyi, ri, hi, vxj, vyj, rj, hj, dij, dtEKF);
           hij = hj-hi;
+          dist = dij;
           inputVar[n][STATE_rlX] = vxj;
           inputVar[n][STATE_rlY] = vyj;
           inputVar[n][STATE_rlYaw] = rj;
@@ -217,6 +218,7 @@ LOG_ADD(LOG_FLOAT, rlX1, &relaVar[1].S[STATE_rlX])
 LOG_ADD(LOG_FLOAT, rlY1, &relaVar[1].S[STATE_rlY])
 LOG_ADD(LOG_FLOAT, rlYaw1, &relaVar[1].S[STATE_rlYaw])
 LOG_ADD(LOG_FLOAT, rlZ1, &hij)
+LOG_ADD(LOG_FLOAT, dist1, &dist)
 LOG_ADD(LOG_FLOAT, rlX2, &relaVar[2].S[STATE_rlX])
 LOG_ADD(LOG_FLOAT, rlY2, &relaVar[2].S[STATE_rlY])
 LOG_ADD(LOG_FLOAT, rlYaw2, &relaVar[2].S[STATE_rlYaw])

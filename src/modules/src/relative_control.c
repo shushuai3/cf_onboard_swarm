@@ -157,11 +157,16 @@ static void formation0asCenter(float tarX, float tarY){
 
 void relativeControlTask(void* arg)
 {
-  static uint32_t ctrlTick;
+  static uint32_t ctrlTick, lastTick;
   systemWaitStart();
+  static logVarId_t logIdStateIsFlying;
+  logIdStateIsFlying = logGetVarId("kalman", "inFlight");
   // height = (float)selfID*0.1f+0.2f;
   while(1) {
     vTaskDelay(10);
+    if(selfID==0){
+      keepFlying = logGetUint(logIdStateIsFlying);
+    }
 #if USE_MONOCAM
     if(selfID==0)
       uart2Getchar(&c);
@@ -173,7 +178,8 @@ void relativeControlTask(void* arg)
         estimatorKalmanInit(); // reseting kalman filter
         vTaskDelay(M2T(2000));
         for (int i=0; i<50; i++) {
-          setHoverSetpoint(&setpoint, 0, 0, 0.3f, 0);
+          if(selfID!=0)
+            setHoverSetpoint(&setpoint, 0, 0, 0.3f, 0);
           vTaskDelay(M2T(100));
         }
         onGround = false;
@@ -186,7 +192,8 @@ void relativeControlTask(void* arg)
       // setHoverSetpoint(&setpoint, 0, 0, height, 0); // hover
       uint32_t tickInterval = xTaskGetTickCount() - ctrlTick;
       if( tickInterval < 20000){
-        flyRandomIn1meter(1.0f); // random flight within first 10 seconds
+        if(selfID!=0)
+          flyRandomIn1meter(1.0f); // random flight within first 10 seconds
         targetX = relaVarInCtrl[0][STATE_rlX];
         targetY = relaVarInCtrl[0][STATE_rlY];
       }
@@ -200,49 +207,31 @@ void relativeControlTask(void* arg)
           formation0asCenter(targetX, targetY);
 #else
         if ( (tickInterval > 20000) && (tickInterval < 30000) ){ // formation
-          if(selfID==0)
-            flyRandomIn1meter(1.0f);
-          else
+          srand((unsigned int) relaVarInCtrl[0][STATE_rlX]*100);
+          if(selfID!=0){
             formation0asCenter(targetX, targetY);
+          }
             // NDI_formation0asCenter(targetX, targetY);
+            lastTick = tickInterval;
         }
 
         static float relaXof2in1=1.0f, relaYof2in1=0.0f;
-        if ( (tickInterval > 30000) && (tickInterval < 180000) ){
-          if(selfID==0)
-            flyRandomIn1meter(1.0f);
-          else{
-            if ((tickInterval > 30000)&&(tickInterval < 50000))
+        if ( (tickInterval > 30000) ){
+          if(selfID!=0)
+          {
+            if(tickInterval - lastTick > 5000)
             {
-              relaXof2in1 = 1.0f; // in front
-              relaYof2in1 = 0.0f;
-              height = 0.5f;
-            }else if ((tickInterval > 50000)&&(tickInterval < 70000))
-            {
-              relaXof2in1 = 1.0f; // in front
-              relaYof2in1 = 0.0f;
-              height = 0.8f;
-            }else if ((tickInterval > 70000)&&(tickInterval < 90000))
-            {
-              relaXof2in1 = 0.7f; // in front
-              relaYof2in1 = 0.0f;
-              height = 0.8f;
-            }else if ((tickInterval > 90000)&&(tickInterval < 110000))
-            {
-              relaXof2in1 = 0.7f; // in front
-              relaYof2in1 = 0.0f;
-              height = 0.5f;
-            }else if ((tickInterval > 110000)&&(tickInterval < 130000))
-            {
-              relaXof2in1 = 0.7f; // in front
-              relaYof2in1 = 0.0f;
-              height = 0.3f;
-            }else if ((tickInterval > 130000)&&(tickInterval < 150000))
-            {
-              relaXof2in1 = 1.0f; // in front
-              relaYof2in1 = 0.0f;
-              height = 0.3f;
+              lastTick = tickInterval;
+              relaXof2in1 = (rand() / (float)RAND_MAX) * 2.5f; // in front
+              relaYof2in1 = (rand() / (float)RAND_MAX) * 3.0f - 1.5f;
+              height = (rand() / (float)RAND_MAX) * 0.8f + 0.2f;
             }
+            // if ((tickInterval > 30000)&&(tickInterval < 50000))
+            // {
+            //   relaXof2in1 = 1.0f; // in front
+            //   relaYof2in1 = 0.0f;
+            //   height = 0.5f;
+            // }else if ((tickInterval > 50000)&&(tickInterval < 70000))
             targetX = -cosf(relaVarInCtrl[0][STATE_rlYaw])*relaXof2in1 + sinf(relaVarInCtrl[0][STATE_rlYaw])*relaYof2in1;
             targetY = -sinf(relaVarInCtrl[0][STATE_rlYaw])*relaXof2in1 - cosf(relaVarInCtrl[0][STATE_rlYaw])*relaYof2in1;
             formation0asCenter(targetX, targetY); 
