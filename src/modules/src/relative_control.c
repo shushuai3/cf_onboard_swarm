@@ -185,7 +185,7 @@ void relativeControlTask(void* arg)
       // control loop
       // setHoverSetpoint(&setpoint, 0, 0, height, 0); // hover
       uint32_t tickInterval = xTaskGetTickCount() - ctrlTick;
-      if( tickInterval < 20000){
+      if( tickInterval < 30000){
         flyRandomIn1meter(1.0f); // random flight within first 10 seconds
         targetX = relaVarInCtrl[0][STATE_rlX];
         targetY = relaVarInCtrl[0][STATE_rlY];
@@ -199,61 +199,23 @@ void relativeControlTask(void* arg)
         else
           formation0asCenter(targetX, targetY);
 #else
-        if ( (tickInterval > 20000) && (tickInterval < 30000) ){ // formation
+        if ( (tickInterval > 30000) && (tickInterval < 40000) ){ // formation
           if(selfID==0)
             flyRandomIn1meter(1.0f);
           else
             formation0asCenter(targetX, targetY);
-            // NDI_formation0asCenter(targetX, targetY);
         }
-
-        static float relaXof2in1=1.0f, relaYof2in1=0.0f;
-        if ( (tickInterval > 30000) && (tickInterval < 180000) ){
+        if ( (tickInterval > 40000) && (tickInterval < 60000) ){ // formation
           if(selfID==0)
             flyRandomIn1meter(1.0f);
-          else{
-            if ((tickInterval > 30000)&&(tickInterval < 50000))
-            {
-              relaXof2in1 = 1.0f; // in front
-              relaYof2in1 = 0.0f;
-              height = 0.5f;
-            }else if ((tickInterval > 50000)&&(tickInterval < 70000))
-            {
-              relaXof2in1 = 1.0f; // in front
-              relaYof2in1 = 0.0f;
-              height = 0.8f;
-            }else if ((tickInterval > 70000)&&(tickInterval < 90000))
-            {
-              relaXof2in1 = 0.7f; // in front
-              relaYof2in1 = 0.0f;
-              height = 0.8f;
-            }else if ((tickInterval > 90000)&&(tickInterval < 110000))
-            {
-              relaXof2in1 = 0.7f; // in front
-              relaYof2in1 = 0.0f;
-              height = 0.5f;
-            }else if ((tickInterval > 110000)&&(tickInterval < 130000))
-            {
-              relaXof2in1 = 0.7f; // in front
-              relaYof2in1 = 0.0f;
-              height = 0.3f;
-            }else if ((tickInterval > 130000)&&(tickInterval < 150000))
-            {
-              relaXof2in1 = 1.0f; // in front
-              relaYof2in1 = 0.0f;
-              height = 0.3f;
-            }
-            targetX = -cosf(relaVarInCtrl[0][STATE_rlYaw])*relaXof2in1 + sinf(relaVarInCtrl[0][STATE_rlYaw])*relaYof2in1;
-            targetY = -sinf(relaVarInCtrl[0][STATE_rlYaw])*relaXof2in1 - cosf(relaVarInCtrl[0][STATE_rlYaw])*relaYof2in1;
-            formation0asCenter(targetX, targetY); 
-          }
+          else
+            formation0asCenter(targetX+0.5f, targetY);
         }
-
-        if (tickInterval > 180000){
+        if (tickInterval > 60000){
           if(selfID==0)
             setHoverSetpoint(&setpoint, 0, 0, height, 0);
           else
-            formation0asCenter(targetX, targetY);
+            formation0asCenter(targetX+0.5f, targetY);
         }
 #endif
       }
