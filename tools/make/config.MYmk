@@ -1,0 +1,7 @@
+## For the leader (E5)
+# CFLAGS += -DDECK_FORCE=bcAIDeck
+# CFLAGS += -DLOCODECK_USE_ALT_PINS
+# CFLAGS += -DLOCODECK_ALT_PIN_RESET=DECK_GPIO_RX2
+
+## For the follower (E6)
+CFLAGS += -DTURN_OFF_LEDS

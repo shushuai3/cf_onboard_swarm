@@ -117,7 +117,7 @@ void relativeLocoTask(void* arg)
     }
     connectCount++;
     if(connectCount>100){
-      fullConnect = true; // disable control if there is no ranging after 1 second
+      fullConnect = false; // disable control if there is no ranging after 1 second
     }
   }
 }

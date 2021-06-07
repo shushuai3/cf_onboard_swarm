@@ -166,6 +166,8 @@ void relativeControlTask(void* arg)
     vTaskDelay(10);
     if(selfID==0){
       keepFlying = logGetUint(logIdStateIsFlying);
+      keepFlying = command_share(selfID, keepFlying);
+      continue;
     }
 #if USE_MONOCAM
     if(selfID==0)
@@ -178,13 +180,10 @@ void relativeControlTask(void* arg)
         estimatorKalmanInit(); // reseting kalman filter
         vTaskDelay(M2T(2000));
         for (int i=0; i<50; i++) {
-          if(selfID!=0)
-            setHoverSetpoint(&setpoint, 0, 0, 0.3f, 0);
+          setHoverSetpoint(&setpoint, 0, 0, 0.3f, 0);
           vTaskDelay(M2T(100));
         }
         onGround = false;
-        if(selfID==0)
-          vTaskDelay(M2T(1000));
         ctrlTick = xTaskGetTickCount();
       }
 
@@ -192,7 +191,6 @@ void relativeControlTask(void* arg)
       // setHoverSetpoint(&setpoint, 0, 0, height, 0); // hover
       uint32_t tickInterval = xTaskGetTickCount() - ctrlTick;
       if( tickInterval < 20000){
-        if(selfID!=0)
           flyRandomIn1meter(1.0f); // random flight within first 10 seconds
         targetX = relaVarInCtrl[0][STATE_rlX];
         targetY = relaVarInCtrl[0][STATE_rlY];
@@ -208,41 +206,23 @@ void relativeControlTask(void* arg)
 #else
         if ( (tickInterval > 20000) && (tickInterval < 30000) ){ // formation
           srand((unsigned int) relaVarInCtrl[0][STATE_rlX]*100);
-          if(selfID!=0){
             formation0asCenter(targetX, targetY);
-          }
             // NDI_formation0asCenter(targetX, targetY);
             lastTick = tickInterval;
         }
 
         static float relaXof2in1=1.0f, relaYof2in1=0.0f;
         if ( (tickInterval > 30000) ){
-          if(selfID!=0)
+          if(tickInterval - lastTick > 5000)
           {
-            if(tickInterval - lastTick > 5000)
-            {
-              lastTick = tickInterval;
-              relaXof2in1 = (rand() / (float)RAND_MAX) * 2.5f; // in front
-              relaYof2in1 = (rand() / (float)RAND_MAX) * 3.0f - 1.5f;
-              height = (rand() / (float)RAND_MAX) * 0.8f + 0.2f;
-            }
-            // if ((tickInterval > 30000)&&(tickInterval < 50000))
-            // {
-            //   relaXof2in1 = 1.0f; // in front
-            //   relaYof2in1 = 0.0f;
-            //   height = 0.5f;
-            // }else if ((tickInterval > 50000)&&(tickInterval < 70000))
-            targetX = -cosf(relaVarInCtrl[0][STATE_rlYaw])*relaXof2in1 + sinf(relaVarInCtrl[0][STATE_rlYaw])*relaYof2in1;
-            targetY = -sinf(relaVarInCtrl[0][STATE_rlYaw])*relaXof2in1 - cosf(relaVarInCtrl[0][STATE_rlYaw])*relaYof2in1;
-            formation0asCenter(targetX, targetY); 
+            lastTick = tickInterval;
+            relaXof2in1 = (rand() / (float)RAND_MAX) * 2.5f; // in front
+            relaYof2in1 = (rand() / (float)RAND_MAX) * 3.0f - 1.5f;
+            height = (rand() / (float)RAND_MAX) * 0.8f + 0.2f;
           }
-        }
-
-        if (tickInterval > 180000){
-          if(selfID==0)
-            setHoverSetpoint(&setpoint, 0, 0, height, 0);
-          else
-            formation0asCenter(targetX, targetY);
+          targetX = -cosf(relaVarInCtrl[0][STATE_rlYaw])*relaXof2in1 + sinf(relaVarInCtrl[0][STATE_rlYaw])*relaYof2in1;
+          targetY = -sinf(relaVarInCtrl[0][STATE_rlYaw])*relaXof2in1 - cosf(relaVarInCtrl[0][STATE_rlYaw])*relaYof2in1;
+          formation0asCenter(targetX, targetY); 
         }
 #endif
       }
@@ -251,8 +231,10 @@ void relativeControlTask(void* arg)
       // landing procedure
       if(!onGround){
         for (int i=1; i<5; i++) {
+          if(selfID!=0){
           setHoverSetpoint(&setpoint, 0, 0, 0.3f-(float)i*0.05f, 0);
           vTaskDelay(M2T(10));
+          }
         }
         onGround = true;
       } 
