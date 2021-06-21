@@ -157,7 +157,7 @@ static void formation0asCenter(float tarX, float tarY){
 
 void relativeControlTask(void* arg)
 {
-  static uint32_t ctrlTick, lastTick;
+  static uint32_t ctrlTick;
   systemWaitStart();
   static logVarId_t logIdStateIsFlying;
   logIdStateIsFlying = logGetVarId("kalman", "inFlight");
@@ -206,20 +206,20 @@ void relativeControlTask(void* arg)
 #else
         if ( (tickInterval > 20000) && (tickInterval < 30000) ){ // formation
           srand((unsigned int) relaVarInCtrl[0][STATE_rlX]*100);
-            formation0asCenter(targetX, targetY);
-            // NDI_formation0asCenter(targetX, targetY);
-            lastTick = tickInterval;
+          formation0asCenter(targetX, targetY);
+          // NDI_formation0asCenter(targetX, targetY);
+          // lastTick = tickInterval;
         }
 
-        static float relaXof2in1=1.0f, relaYof2in1=0.0f;
+        static float relaXof2in1=0.7f, relaYof2in1=0.0f;
         if ( (tickInterval > 30000) ){
-          if(tickInterval - lastTick > 5000)
-          {
-            lastTick = tickInterval;
-            relaXof2in1 = (rand() / (float)RAND_MAX) * 2.5f; // in front
-            relaYof2in1 = (rand() / (float)RAND_MAX) * 3.0f - 1.5f;
-            height = (rand() / (float)RAND_MAX) * 0.8f + 0.2f;
-          }
+          // if(tickInterval - lastTick > 3000)
+          // {
+          //   lastTick = tickInterval;
+          //   relaXof2in1 = (rand() / (float)RAND_MAX) * 0.8f + 0.2f; // in front
+          //   relaYof2in1 = ((rand() / (float)RAND_MAX) -0.5f)* 0.7f * relaXof2in1; // horizon offset based on depth
+          //   height = (rand() / (float)RAND_MAX) * 0.8f + 0.2f;
+          // }
           targetX = -cosf(relaVarInCtrl[0][STATE_rlYaw])*relaXof2in1 + sinf(relaVarInCtrl[0][STATE_rlYaw])*relaYof2in1;
           targetY = -sinf(relaVarInCtrl[0][STATE_rlYaw])*relaXof2in1 - cosf(relaVarInCtrl[0][STATE_rlYaw])*relaYof2in1;
           formation0asCenter(targetX, targetY); 

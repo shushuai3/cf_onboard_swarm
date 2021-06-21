@@ -153,7 +153,8 @@ static void Gap8Task(void *param)
             packet[22+i] = thing.bytes[i];
         }
         uart1SendData(28, packet);
-        vTaskDelay(M2T((rand()%50) + 50));
+        // vTaskDelay(M2T((rand()%10) + 20));
+        vTaskDelay(M2T(20));
     }
 }
 
