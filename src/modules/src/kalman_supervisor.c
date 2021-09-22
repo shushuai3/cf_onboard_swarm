@@ -38,9 +38,9 @@ bool kalmanSupervisorIsStateWithinBounds(const kalmanCoreData_t* this) {
   for (int i = 0; i < 3; i++) {
     if (maxPosition > 0.0f) {
       if (this->S[KC_STATE_X + i] > maxPosition) {
-        return false;
+        return true;
       } else if (this->S[KC_STATE_X + i] < -maxPosition) {
-        return false;
+        return true;
       }
     }
 

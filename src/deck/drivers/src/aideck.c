@@ -50,6 +50,14 @@
 static bool isInit = false;
 // static uint8_t byte;
 
+// E5 and E6 have different config.mk file
+// ## For the leader (E5)
+// CFLAGS += -DDECK_FORCE=bcAIDeck
+// CFLAGS += -DLOCODECK_USE_ALT_PINS
+// CFLAGS += -DLOCODECK_ALT_PIN_RESET=DECK_GPIO_RX2
+// ## For the follower (E6)
+// # CFLAGS += -DTURN_OFF_LEDS
+
 //Uncomment when NINA printout read is desired from console
 //#define DEBUG_NINA_PRINT
 
@@ -154,7 +162,7 @@ static void Gap8Task(void *param)
         }
         uart1SendData(28, packet);
         // vTaskDelay(M2T((rand()%10) + 20));
-        vTaskDelay(M2T(20));
+        vTaskDelay(M2T(40));
     }
 }
 
