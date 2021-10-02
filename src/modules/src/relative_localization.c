@@ -21,7 +21,7 @@ static bool isInit;
 
 static float Qv = 1.0f; // velocity deviation
 static float Qr = 0.7f; // yaw rate deviation
-static float Ruwb = 3.5f; // ranging deviation
+static float Ruwb = 2.0f; // ranging deviation
 static float InitCovPos = 1000.0f;
 static float InitCovYaw = 1.0f;
 
@@ -123,10 +123,6 @@ void relativeEKF(int n, float vxi, float vyi, float ri, float hi, float vxj, flo
 {
   // some preprocessing
   arm_matrix_instance_f32 Pm = {STATE_DIM_rl, STATE_DIM_rl, (float *)relaVar[n].P};
-  vxi = vxi*0.88f;
-  vyi = vyi*0.88f;
-  vxj = vxj*0.88f;
-  vyj = vyj*0.88f;
   float cyaw = arm_cos_f32(relaVar[n].S[STATE_rlYaw]);
   float syaw = arm_sin_f32(relaVar[n].S[STATE_rlYaw]);
   float xij = relaVar[n].S[STATE_rlX];
@@ -168,7 +164,7 @@ void relativeEKF(int n, float vxi, float vyi, float ri, float hi, float vxj, flo
   xij = relaVar[n].S[STATE_rlX];
   yij = relaVar[n].S[STATE_rlY];
   float distPred = arm_sqrt(xij*xij+yij*yij+(hi-hj)*(hi-hj))+0.0001f;
-  float distMeas = (float)(dij/1000);
+  float distMeas = (float)(dij/1000.0f);
   distMeas = distMeas - (0.048f*distMeas + 0.65f); // UWB biad model
   h[0] = xij/distPred;
   h[1] = yij/distPred;
