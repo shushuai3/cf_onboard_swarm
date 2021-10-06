@@ -50,8 +50,8 @@ static arm_matrix_instance_f32 PHTm = {STATE_DIM_rl, 1, PHTd};
 static bool fullConnect = false; // a flag for control (fly or not)
 static int8_t connectCount = 0; // watchdog for detecting the connection
 
-static float vxj, vyj, rj; // receive vx, vy, gz and distance
-static float vxi, vyi, ri; // self vx, vy, gz
+static float vxj, vyj, vzj, rj; // receive vx, vy, vz, gz
+static float vxi, vyi, vzi, ri; // self vx, vy, vz, gz
 static uint16_t dij; // distance between self i and other j
 static float hi, hj; // height of robot i and j
 static float hij, dist;
@@ -85,9 +85,11 @@ void relativeLocoTask(void* arg)
     }
     relaVar[n].P[STATE_rlX][STATE_rlX] = InitCovPos;
     relaVar[n].P[STATE_rlY][STATE_rlY] = InitCovPos;
+    relaVar[n].P[STATE_rlZ][STATE_rlZ] = InitCovPos;
     relaVar[n].P[STATE_rlYaw][STATE_rlYaw] = InitCovYaw;  
     relaVar[n].S[STATE_rlX] = 0;
     relaVar[n].S[STATE_rlY] = 0;
+    relaVar[n].S[STATE_rlZ] = 0;
     relaVar[n].S[STATE_rlYaw] = 0;
     relaVar[n].receiveFlag = false;
   }
@@ -95,17 +97,18 @@ void relativeLocoTask(void* arg)
   while(1) {
     vTaskDelay(10);
     for (int n=0; n<NumUWB; n++) {
-      if (twrGetSwarmInfo(n, &dij, &vxj, &vyj, &rj, &hj)){
+      if (twrGetSwarmInfo(n, &dij, &vxj, &vyj, &vzj, &rj, &hj)){
         connectCount = 0;
-        estimatorKalmanGetSwarmInfo(&vxi, &vyi, &ri, &hi);
+        estimatorKalmanGetSwarmInfo(&vxi, &vyi, &vzi, &ri, &hi);
         if(relaVar[n].receiveFlag){
           uint32_t osTick = xTaskGetTickCount();
           float dtEKF = (float)(osTick - relaVar[n].oldTimetick)/configTICK_RATE_HZ;
           relaVar[n].oldTimetick = osTick;
-          relativeEKF(n, vxi, vyi, ri, hi, vxj, vyj, rj, hj, dij, dtEKF);
+          relativeEKF(n, vxi, vyi, vzi, ri, hi, vxj, vyj, vzj, rj, hj, dij, dtEKF);
           if(n==1){hij = hj-hi;}
           inputVar[n][STATE_rlX] = vxj;
           inputVar[n][STATE_rlY] = vyj;
+          inputVar[n][STATE_rlZ] = vzj;
           inputVar[n][STATE_rlYaw] = rj;
         }else{
           relaVar[n].oldTimetick = xTaskGetTickCount();
@@ -121,33 +124,44 @@ void relativeLocoTask(void* arg)
   }
 }
 
-void relativeEKF(int n, float vxi, float vyi, float ri, float hi, float vxj, float vyj, float rj, float hj, uint16_t dij, float dt)
+void relativeEKF(int n, float vxi, float vyi, float vzi, float ri, float hi, float vxj, float vyj, float vzj, float rj, float hj, uint16_t dij, float dt)
 {
   // some preprocessing
   arm_matrix_instance_f32 Pm = {STATE_DIM_rl, STATE_DIM_rl, (float *)relaVar[n].P};
   vxi = vxi*0.88f;
   vyi = vyi*0.88f;
+  vzi = vzi*0.88f;
   vxj = vxj*0.88f;
   vyj = vyj*0.88f;
+  vzj = vzj*0.88f;
   float cyaw = arm_cos_f32(relaVar[n].S[STATE_rlYaw]);
   float syaw = arm_sin_f32(relaVar[n].S[STATE_rlYaw]);
   float xij = relaVar[n].S[STATE_rlX];
   float yij = relaVar[n].S[STATE_rlY];
+  float zij = relaVar[n].S[STATE_rlZ];
 
   // prediction
   relaVar[n].S[STATE_rlX] = xij + (cyaw*vxj-syaw*vyj-vxi+ri*yij)*dt;
   relaVar[n].S[STATE_rlY] = yij + (syaw*vxj+cyaw*vyj-vyi-ri*xij)*dt;
+  relaVar[n].S[STATE_rlZ] = zij + (vzj-vzi)*dt;
   relaVar[n].S[STATE_rlYaw] = relaVar[n].S[STATE_rlYaw] + (rj-ri)*dt;
 
   A[0][0] = 1;
   A[0][1] = ri*dt;
-  A[0][2] = (-syaw*vxj-cyaw*vyj)*dt;
+  A[0][2] = 0;
+  A[0][3] = (-syaw*vxj-cyaw*vyj)*dt;
   A[1][0] = -ri*dt;
   A[1][1] = 1;
-  A[1][2] = (cyaw*vxj-syaw*vyj)*dt;
+  A[1][2] = 0;
+  A[1][3] = (cyaw*vxj-syaw*vyj)*dt;
   A[2][0] = 0;
   A[2][1] = 0;
   A[2][2] = 1;
+  A[2][3] = 0;
+  A[3][0] = 0;
+  A[3][1] = 0;
+  A[3][2] = 0;
+  A[3][3] = 1;
 
   mat_mult(&Am, &Pm, &tmpNN1m); // A P
   mat_trans(&Am, &tmpNN2m); // A'
@@ -156,26 +170,33 @@ void relativeEKF(int n, float vxi, float vyi, float ri, float hi, float vxj, flo
   // BQB' = [ Qv*c^2 + Qv*s^2 + Qr*y^2 + Qv,                       -Qr*x*y, -Qr*y]
   //        [                       -Qr*x*y, Qv*c^2 + Qv*s^2 + Qr*x^2 + Qv,  Qr*x]
   //        [                         -Qr*y,                          Qr*x,  2*Qr]*dt^2
+// [ Qv + Qr*yij*yij + Qv, -Qr*yij*xij,          0,    -Qr*yij]
+// [ -Qr*xij*yij,          Qv + Qr*xij*xij + Qv, 0,    Qr*xij]
+// [ 0,                    0,                    2*Qv, 0]
+// [ -Qr*yij,              Qr*xij,               0,    2*Qr]
   float dt2 = dt*dt;
-  relaVar[n].P[0][0] += dt2*(Qv+Qv+Qr*yij*yij);
-  relaVar[n].P[0][1] += dt2*(-Qr*xij*yij);
-  relaVar[n].P[0][2] += dt2*(-Qr*yij);
+  relaVar[n].P[0][0] += dt2*(Qv + Qr*yij*yij + Qv);
+  relaVar[n].P[0][1] += dt2*(-Qr*yij*xij);
+  relaVar[n].P[0][3] += dt2*(-Qr*yij);
   relaVar[n].P[1][0] += dt2*(-Qr*xij*yij);
   relaVar[n].P[1][1] += dt2*(Qv+Qv+Qr*xij*xij);
-  relaVar[n].P[1][2] += dt2*(Qr*xij);
-  relaVar[n].P[2][0] += dt2*(-Qr*yij);
-  relaVar[n].P[2][1] += dt2*(Qr*xij);
-  relaVar[n].P[2][2] += dt2*(2*Qr);
+  relaVar[n].P[1][3] += dt2*(Qr*xij);
+  relaVar[n].P[2][2] += dt2*(2*Qv);
+  relaVar[n].P[3][0] += dt2*(-Qr*yij);
+  relaVar[n].P[3][1] += dt2*(Qr*xij);
+  relaVar[n].P[3][3] += dt2*(2*Qr);
 
   xij = relaVar[n].S[STATE_rlX];
   yij = relaVar[n].S[STATE_rlY];
-  float distPred = arm_sqrt(xij*xij+yij*yij+(hi-hj)*(hi-hj))+0.0001f;
+  zij = relaVar[n].S[STATE_rlZ];
+  float distPred = arm_sqrt(xij*xij+yij*yij+zij*zij)+0.0001f;
   float distMeas = (float)(dij/1000.0f);
   distMeas = distMeas - (0.048f*distMeas + 0.65f); // UWB biad model
   if(n==1){dist = distMeas;}
   h[0] = xij/distPred;
   h[1] = yij/distPred;
-  h[2] = 0;
+  h[2] = zij/distPred;
+  h[3] = 0;
 
   mat_trans(&H, &HTm); // H'
   mat_mult(&Pm, &HTm, &PHTm); // PH'

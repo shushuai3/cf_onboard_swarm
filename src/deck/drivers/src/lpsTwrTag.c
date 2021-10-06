@@ -18,6 +18,7 @@ typedef struct {
   uint16_t distance[NumUWB];
   float vx[NumUWB];
   float vy[NumUWB];
+  float vz[NumUWB];
   float gz[NumUWB];
   float h[NumUWB];
   bool refresh[NumUWB];
@@ -172,6 +173,7 @@ static void rxcallback(dwDevice_t *dev) {
           rangingOk = true;
           state.vx[current_receiveID] = report->selfVx;
           state.vy[current_receiveID] = report->selfVy;
+          state.vz[current_receiveID] = report->selfVz;
           state.gz[current_receiveID] = report->selfGz;
           state.h[current_receiveID]  = report->selfh;
           if(current_receiveID==0)
@@ -183,7 +185,7 @@ static void rxcallback(dwDevice_t *dev) {
         txPacket.payload[LPS_TWR_TYPE] = LPS_TWR_REPORT+1;
         txPacket.payload[LPS_TWR_SEQ] = rxPacket.payload[LPS_TWR_SEQ];
         report2->reciprocalDistance = calcDist;
-        estimatorKalmanGetSwarmInfo(&report2->selfVx, &report2->selfVy, &report2->selfGz, &report2->selfh);
+        estimatorKalmanGetSwarmInfo(&report2->selfVx, &report2->selfVy, &report2->selfVz, &report2->selfGz, &report2->selfh);
         report2->keep_flying = state.keep_flying;
         dwNewTransmit(dev);
         dwSetData(dev, (uint8_t*)&txPacket, MAC802154_HEADER_LENGTH+2+sizeof(lpsTwrTagReportPayload_t));
@@ -218,7 +220,7 @@ static void rxcallback(dwDevice_t *dev) {
         memcpy(&report->pollRx, &poll_rx, 5);
         memcpy(&report->answerTx, &answer_tx, 5);
         memcpy(&report->finalRx, &final_rx, 5);
-        estimatorKalmanGetSwarmInfo(&report->selfVx, &report->selfVy, &report->selfGz, &report->selfh);
+        estimatorKalmanGetSwarmInfo(&report->selfVx, &report->selfVy, &report->selfVz, &report->selfGz, &report->selfh);
         report->keep_flying = state.keep_flying;
         dwNewTransmit(dev);
         dwSetData(dev, (uint8_t*)&txPacket, MAC802154_HEADER_LENGTH+2+sizeof(lpsTwrTagReportPayload_t));
@@ -244,6 +246,7 @@ static void rxcallback(dwDevice_t *dev) {
           median_data[rangingID].distance_history[median_data[rangingID].index_inserting] = calcDist; 
           state.vx[rangingID] = report2->selfVx;
           state.vy[rangingID] = report2->selfVy;
+          state.vz[rangingID] = report2->selfVz;
           state.gz[rangingID] = report2->selfGz;
           state.h[rangingID]  = report2->selfh;
           if(rangingID==0)
@@ -407,12 +410,13 @@ static uint8_t getActiveAnchorIdList(uint8_t unorderedAnchorList[], const int ma
   return count;
 }
 
-bool twrGetSwarmInfo(int robNum, uint16_t* range, float* vx, float* vy, float* gyroZ, float* height) {
+bool twrGetSwarmInfo(int robNum, uint16_t* range, float* vx, float* vy, float* vz, float* gyroZ, float* height) {
   if(state.refresh[robNum]==true) {
     state.refresh[robNum] = false;
     *range = state.distance[robNum];
     *vx = state.vx[robNum];
     *vy = state.vy[robNum];
+    *vz = state.vz[robNum];
     *gyroZ = state.gz[robNum];
     *height = state.h[robNum];
     return(true);

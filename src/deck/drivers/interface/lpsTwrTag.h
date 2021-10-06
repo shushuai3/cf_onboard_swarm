@@ -24,12 +24,13 @@ typedef struct {
   uint16_t reciprocalDistance;
   float selfVx;
   float selfVy;
+  float selfVz;
   float selfGz;
   float selfh;
   bool keep_flying;
 } __attribute__((packed)) lpsTwrTagReportPayload_t;
 
-bool twrGetSwarmInfo(int robNum, uint16_t* range, float* vx, float* vy, float* gyroZ, float* height);
+bool twrGetSwarmInfo(int robNum, uint16_t* range, float* vx, float* vy, float* vz, float* gyroZ, float* height);
 bool command_share(int RobIDfromControl, bool keep_flying);
 
 #endif // __LPS_TWR_TAG_H__
