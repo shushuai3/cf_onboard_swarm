@@ -44,6 +44,20 @@ static void setHoverSetpoint(setpoint_t *setpoint, float vx, float vy, float z, 
   commanderSetSetpoint(setpoint, 3);
 }
 
+static void set3DVel(setpoint_t *setpoint, float vx, float vy, float vz, float yawrate)
+{
+  setpoint->mode.z = modeVelocity;
+  setpoint->mode.yaw = modeVelocity;
+  setpoint->attitudeRate.yaw = yawrate;
+  setpoint->mode.x = modeVelocity;
+  setpoint->mode.y = modeVelocity;
+  setpoint->velocity.x = vx;
+  setpoint->velocity.y = vy;
+  setpoint->velocity.z = vz;
+  setpoint->velocity_body = true;
+  commanderSetSetpoint(setpoint, 3);
+}
+
 static void flyRandomIn1meter(float vel){
   float randomYaw = (rand() / (float)RAND_MAX) * 6.28f; // 0-2pi rad
   float randomVel = vel*(rand() / (float)RAND_MAX); // 0-1 m/s
@@ -97,8 +111,10 @@ static float targetX;
 static float targetY;
 static float PreErr_x = 0;
 static float PreErr_y = 0;
+static float PreErr_z = 0;
 static float IntErr_x = 0;
 static float IntErr_y = 0;
+static float IntErr_z = 0;
 static uint32_t PreTime;
 static void formation0asCenter(float tarX, float tarY){
   float dt = (float)(xTaskGetTickCount()-PreTime)/configTICK_RATE_HZ;
@@ -108,20 +124,28 @@ static void formation0asCenter(float tarX, float tarY){
   // pid control for formation flight
   float err_x = -(tarX - relaVarInCtrl[0][STATE_rlX]);
   float err_y = -(tarY - relaVarInCtrl[0][STATE_rlY]);
+  float err_z = -(0 - relaVarInCtrl[0][STATE_rlZ]);
   float pid_vx = relaCtrl_p * err_x;
   float pid_vy = relaCtrl_p * err_y;
+  float pid_vz = relaCtrl_p * err_z;
   float dx = (err_x - PreErr_x) / dt;
   float dy = (err_y - PreErr_y) / dt;
+  float dz = (err_z - PreErr_z) / dt;
   PreErr_x = err_x;
   PreErr_y = err_y;
+  PreErr_z = err_z;
   pid_vx += relaCtrl_d * dx;
   pid_vy += relaCtrl_d * dy;
+  pid_vz += relaCtrl_d * dz;
   IntErr_x += err_x * dt;
   IntErr_y += err_y * dt;
+  IntErr_z += err_z * dt;
   pid_vx += relaCtrl_i * constrain(IntErr_x, -0.5, 0.5);
   pid_vy += relaCtrl_i * constrain(IntErr_y, -0.5, 0.5);
+  pid_vz += relaCtrl_i * constrain(IntErr_z, -0.5, 0.5);
   pid_vx = constrain(pid_vx, -1.5f, 1.5f);
   pid_vy = constrain(pid_vy, -1.5f, 1.5f);
+  pid_vz = constrain(pid_vz, -0.3f, 0.3f);
 
   // float rep_x = 0.0f;
   // float rep_y = 0.0f;
@@ -139,7 +163,7 @@ static void formation0asCenter(float tarX, float tarY){
   // pid_vx = constrain(pid_vx + rep_x, -1.5f, 1.5f);
   // pid_vy = constrain(pid_vy + rep_y, -1.5f, 1.5f);
 
-  setHoverSetpoint(&setpoint, pid_vx, pid_vy, height, 0);
+  set3DVel(&setpoint, pid_vx, pid_vy, pid_vz, 0);
 }
 
 // static void NDI_formation0asCenter(float tarX, float tarY){
@@ -198,6 +222,25 @@ void relativeControlTask(void* arg)
           flyRandomIn1meter(1.0f); // random flight within first 10 seconds
         targetX = relaVarInCtrl[0][STATE_rlX];
         targetY = relaVarInCtrl[0][STATE_rlY];
+
+        if ((tickInterval > 2000) && (tickInterval < 4000))
+            height = 0.3;
+        if ((tickInterval > 4000) && (tickInterval < 6000))
+            height = 0.5;
+        if ((tickInterval > 6000) && (tickInterval < 8000))
+            height = 0.7;
+        if ((tickInterval > 8000) && (tickInterval < 10000))
+            height = 0.4;
+        if ((tickInterval > 10000) && (tickInterval < 12000))
+            height = 0.8;
+        if ((tickInterval > 12000) && (tickInterval < 14000))
+            height = 0.3;
+        if ((tickInterval > 14000) && (tickInterval < 16000))
+            height = 0.7;
+        if ((tickInterval > 16000) && (tickInterval < 18000))
+            height = 0.9;
+        if ((tickInterval > 18000) && (tickInterval < 20000))
+            height = 0.5;
       }
       else
       {

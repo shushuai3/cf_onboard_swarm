@@ -128,12 +128,6 @@ void relativeEKF(int n, float vxi, float vyi, float vzi, float ri, float hi, flo
 {
   // some preprocessing
   arm_matrix_instance_f32 Pm = {STATE_DIM_rl, STATE_DIM_rl, (float *)relaVar[n].P};
-  vxi = vxi*0.88f;
-  vyi = vyi*0.88f;
-  vzi = vzi*0.88f;
-  vxj = vxj*0.88f;
-  vyj = vyj*0.88f;
-  vzj = vzj*0.88f;
   float cyaw = arm_cos_f32(relaVar[n].S[STATE_rlYaw]);
   float syaw = arm_sin_f32(relaVar[n].S[STATE_rlYaw]);
   float xij = relaVar[n].S[STATE_rlX];
@@ -218,9 +212,10 @@ void relativeEKF(int n, float vxi, float vyi, float vzi, float ri, float hi, flo
 bool relativeInfoRead(float* relaVarParam, float* inputVarParam){
   if(fullConnect){
     for(int i=0; i<NumUWB; i++){
-      *(relaVarParam + i*STATE_DIM_rl + 0) = relaVar[i].S[STATE_rlX];
-      *(relaVarParam + i*STATE_DIM_rl + 1) = relaVar[i].S[STATE_rlY];
-      *(relaVarParam + i*STATE_DIM_rl + 2) = relaVar[i].S[STATE_rlYaw];
+      *(relaVarParam + i*STATE_DIM_rl + STATE_rlX) = relaVar[i].S[STATE_rlX];
+      *(relaVarParam + i*STATE_DIM_rl + STATE_rlY) = relaVar[i].S[STATE_rlY];
+      *(relaVarParam + i*STATE_DIM_rl + STATE_rlZ) = relaVar[i].S[STATE_rlZ];
+      *(relaVarParam + i*STATE_DIM_rl + STATE_rlYaw) = relaVar[i].S[STATE_rlYaw];
       *(inputVarParam + i*STATE_DIM_rl + 0) = inputVar[i][STATE_rlX];
       *(inputVarParam + i*STATE_DIM_rl + 1) = inputVar[i][STATE_rlY];
       *(inputVarParam + i*STATE_DIM_rl + 2) = inputVar[i][STATE_rlYaw];
